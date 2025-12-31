@@ -371,14 +371,172 @@ interface ActionWeek {
   tasks: ActionTask[];
 }
 
+// Types for AI Analysis data from sessionStorage
+type EvidenceSource = "interests" | "goals" | "past_activities" | "achievements";
+
+interface SkillSignal {
+  evidence_found: boolean;
+  evidence_phrases: string[];
+  evidence_sources: EvidenceSource[];
+  confidence: number;
+  reasoning: string;
+}
+
+interface AIAnalysisData {
+  formData: {
+    grade: string;
+    interests: string;
+    interestCategories: string[];
+    goals: string[];
+    customGoal: string;
+    timeAvailability: string;
+    preferredLearningModes: string[];
+    activities: string;
+    pastAchievements: string;
+    challenges: string;
+    skillSelfRatings: Record<string, number>;
+  };
+  confidence_note?: string;
+  aiAnalysis: {
+    skill_signals: {
+      problem_solving: SkillSignal;
+      communication: SkillSignal;
+      technical_skills: SkillSignal;
+      creativity: SkillSignal;
+      leadership: SkillSignal;
+      self_management: SkillSignal;
+    };
+    summary: Record<string, boolean>;
+  };
+  meta: {
+    grade: number;
+    goals_count: number;
+    time_availability: number;
+    analyzed_at: string;
+    model: string;
+    api_version: string;
+  };
+  submittedAt: string;
+}
+
+// Types for Skill Gap Analysis
+interface ActionStep {
+  step: string;
+  time_required: string;
+  expected_impact: string;
+  priority: "high" | "medium" | "low";
+  why: string;
+}
+
+interface SkillGapResult {
+  skill: string;
+  current_level: number;
+  goal_level: number;
+  gap: number;
+  expected_level_after: number;
+  timeline: string;
+  why_it_matters: string;
+  actionable_steps: ActionStep[];
+  reasoning: string;
+}
+
+interface SkillWithoutEvidence {
+  skill: string;
+  display_name: string;
+  goal_relevance: "high" | "medium" | "low";
+  suggestion: string;
+}
+
+interface SkillGapAnalysis {
+  skill_gaps: SkillGapResult[];
+  overall_summary: string;
+  priority_skills: string[];
+  total_weekly_time_recommended: string;
+  skills_without_evidence: SkillWithoutEvidence[];
+}
+
 export default function ResultsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("courses");
   const [actionPlan, setActionPlan] = useState<ActionWeek[]>(mockActionPlan);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
   const [expandedOpportunity, setExpandedOpportunity] = useState<number | null>(null);
+  const [analysisData, setAnalysisData] = useState<AIAnalysisData | null>(null);
+  const [skillGapData, setSkillGapData] = useState<SkillGapAnalysis | null>(null);
+  const [isLoadingGaps, setIsLoadingGaps] = useState(false);
+  const [gapError, setGapError] = useState<string | null>(null);
+  const [expandedStepInsight, setExpandedStepInsight] = useState<string | null>(null); // Format: "skillIndex-stepIndex"
+
+  // Toggle step insight visibility
+  const toggleStepInsight = (skillIndex: number, stepIndex: number) => {
+    const key = `${skillIndex}-${stepIndex}`;
+    setExpandedStepInsight(prev => prev === key ? null : key);
+  };
+
+  // Function to fetch skill gap analysis
+  const fetchSkillGapAnalysis = async (data: AIAnalysisData) => {
+    setIsLoadingGaps(true);
+    setGapError(null);
+
+    try {
+      // Parse time availability to hours
+      const timeMapping: Record<string, number> = {
+        "1-3": 2, "4-6": 5, "7-10": 8, "11-15": 13, "15+": 20,
+      };
+      const timeHours = timeMapping[data.formData.timeAvailability] || 5;
+
+      // Build request payload
+      const payload = {
+        skill_snapshot: data.aiAnalysis.skill_signals,
+        student_context: {
+          grade: parseInt(data.formData.grade) || 10,
+          interests_free_text: data.formData.interests,
+          interests_categories: data.formData.interestCategories,
+          goals_selected: data.formData.goals,
+          goals_free_text: data.formData.customGoal,
+          time_availability_hours_per_week: timeHours,
+          learning_preferences: data.formData.preferredLearningModes,
+        },
+      };
+
+      const response = await fetch("/api/skill-gap-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSkillGapData(result.data);
+        console.log("Skill Gap Analysis loaded:", result.data);
+      } else {
+        throw new Error(result.details || result.error || "Failed to analyze skill gaps");
+      }
+    } catch (error) {
+      console.error("Skill gap analysis error:", error);
+      setGapError(error instanceof Error ? error.message : "Failed to load skill gap analysis");
+    } finally {
+      setIsLoadingGaps(false);
+    }
+  };
 
   useEffect(() => {
+    // Load analysis data from sessionStorage
+    const storedData = sessionStorage.getItem("skillAnalysisData");
+    if (storedData) {
+      try {
+        const parsed = JSON.parse(storedData) as AIAnalysisData;
+        setAnalysisData(parsed);
+        console.log("AI Analysis Data loaded:", parsed);
+        
+        // Fetch skill gap analysis after loading skill snapshot
+        fetchSkillGapAnalysis(parsed);
+      } catch (error) {
+        console.error("Failed to parse analysis data:", error);
+      }
+    }
+    
     // Simulate loading
     const timer = setTimeout(() => {
       setIsLoading(false);
@@ -486,7 +644,7 @@ export default function ResultsPage() {
           </p>
         </div>
 
-        {/* Skill Snapshot Section - Enhanced with clickable skills and AI insights */}
+        {/* Skill Snapshot Section - Enhanced with AI data and expandable insights */}
         <section className="mb-12">
           <h2 className="text-2xl font-bold text-[var(--foreground)] mb-6 flex items-center gap-2">
             <svg
@@ -503,74 +661,247 @@ export default function ResultsPage() {
               />
             </svg>
             Your Skill Snapshot
-            <InfoTooltip content="Click on any skill to see AI-generated insights and personalized recommendations" />
+            <InfoTooltip content="Click on any skill to see AI-generated insights with reasoning and supporting evidence from your responses" />
           </h2>
           <Card padding="lg">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {Object.entries(mockSkillScores).map(([key, data]) => (
-                <div
-                  key={key}
-                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                    expandedSkill === key
-                      ? "border-[var(--primary)] bg-[var(--primary)]/5"
-                      : "border-transparent hover:border-[var(--card-border)] hover:bg-[var(--secondary)]/30"
-                  }`}
-                  onClick={() => setExpandedSkill(expandedSkill === key ? null : key)}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-[var(--foreground)]">
-                        {skillLabels[key]}
-                      </span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        data.trend.startsWith("+") 
-                          ? "bg-[var(--success)]/10 text-[var(--success)]"
-                          : "bg-[var(--muted)]/10 text-[var(--muted)]"
-                      }`}>
-                        {data.trend}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`font-bold ${
-                        data.score >= 75 ? "text-[var(--success)]" :
-                        data.score >= 50 ? "text-[var(--warning)]" : "text-[var(--error)]"
-                      }`}>
-                        {data.score}%
-                      </span>
-                      <svg
-                        className={`w-4 h-4 text-[var(--muted)] transition-transform ${
-                          expandedSkill === key ? "rotate-180" : ""
+            {/* Use AI data if available, otherwise fall back to mock data */}
+            {analysisData?.aiAnalysis ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {Object.entries(analysisData.aiAnalysis.skill_signals).map(([aiKey, signal]) => {
+                    // Map AI keys (snake_case) to display names
+                    const skillDisplayNames: Record<string, string> = {
+                      problem_solving: "Problem Solving",
+                      communication: "Communication",
+                      technical_skills: "Technical Skills",
+                      creativity: "Creativity",
+                      leadership: "Leadership",
+                      self_management: "Self-Management",
+                    };
+                    const skillName = skillDisplayNames[aiKey] || aiKey;
+                    const score = Math.round(signal.confidence * 100);
+                    
+                    return (
+                      <div
+                        key={aiKey}
+                        className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                          expandedSkill === aiKey
+                            ? "border-[var(--primary)] bg-[var(--primary)]/5"
+                            : "border-transparent hover:border-[var(--card-border)] hover:bg-[var(--secondary)]/30"
                         }`}
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
+                        onClick={() => setExpandedSkill(expandedSkill === aiKey ? null : aiKey)}
                       >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-[var(--foreground)]">
+                              {skillName}
+                            </span>
+                            <Badge
+                              variant={signal.evidence_found ? "success" : "default"}
+                              size="sm"
+                            >
+                              {signal.evidence_found ? "Evidence Found" : "No Evidence"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`font-bold ${
+                              score >= 75 ? "text-[var(--success)]" :
+                              score >= 50 ? "text-[var(--warning)]" : "text-[var(--error)]"
+                            }`}>
+                              {score}%
+                            </span>
+                            <svg
+                              className={`w-4 h-4 text-[var(--muted)] transition-transform ${
+                                expandedSkill === aiKey ? "rotate-180" : ""
+                              }`}
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        </div>
+                        <ProgressBar
+                          value={score}
+                          color={getColorForScore(score)}
+                          size="md"
+                          showValue={false}
+                        />
+                        
+                        {/* Expandable AI Insights Section */}
+                        {expandedSkill === aiKey && (
+                          <div className="mt-4 pt-4 border-t border-[var(--card-border)] space-y-4">
+                            {/* AI Reasoning */}
+                            <div className="flex items-start gap-2 bg-[var(--primary)]/5 p-3 rounded-lg">
+                              <svg className="w-5 h-5 text-[var(--primary)] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                              </svg>
+                              <div>
+                                <p className="text-sm font-medium text-[var(--primary)] mb-1">AI Reasoning</p>
+                                <p className="text-sm text-[var(--foreground)]">
+                                  {signal.reasoning || "No detailed reasoning available."}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            {/* Supporting Evidence with Sources */}
+                            {signal.evidence_phrases.length > 0 && (
+                              <div className="bg-[var(--secondary)]/30 p-3 rounded-lg">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <svg className="w-4 h-4 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  <p className="text-sm font-medium text-[var(--foreground)]">Supporting Evidence</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {signal.evidence_phrases.map((phrase, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="text-xs px-2.5 py-1.5 bg-[var(--primary)]/10 text-[var(--primary)] rounded-md border border-[var(--primary)]/20"
+                                    >
+                                      &ldquo;{phrase}&rdquo;
+                                    </span>
+                                  ))}
+                                </div>
+                                
+                                {/* Evidence Sources (Provenance) */}
+                                {signal.evidence_sources && signal.evidence_sources.length > 0 && (
+                                  <div className="mt-3 pt-3 border-t border-[var(--card-border)]/50">
+                                    <p className="text-xs text-[var(--muted)] mb-1.5">Evidence found in:</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {signal.evidence_sources.map((source, idx) => {
+                                        const sourceLabels: Record<EvidenceSource, string> = {
+                                          interests: "Interests",
+                                          goals: "Goals",
+                                          past_activities: "Past Activities",
+                                          achievements: "Achievements",
+                                        };
+                                        return (
+                                          <span
+                                            key={idx}
+                                            className="text-xs px-2 py-1 bg-[var(--accent)]/10 text-[var(--accent)] rounded-md"
+                                          >
+                                            {sourceLabels[source]}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* No Evidence Message */}
+                            {!signal.evidence_found && signal.evidence_phrases.length === 0 && (
+                              <div className="bg-[var(--muted)]/10 p-3 rounded-lg">
+                                <p className="text-sm text-[var(--muted)] italic">
+                                  💡 Tip: To improve this score, consider describing experiences where you demonstrated {skillName.toLowerCase()} skills in your activities and achievements.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Confidence Note - Ethical Transparency */}
+                {analysisData.confidence_note && (
+                  <div className="mt-4 p-3 bg-[var(--warning)]/5 border border-[var(--warning)]/20 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-4 h-4 text-[var(--warning)] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
+                      <p className="text-xs text-[var(--muted)]">
+                        <strong className="text-[var(--foreground)]">Note:</strong> {analysisData.confidence_note}
+                      </p>
                     </div>
                   </div>
-                  <ProgressBar
-                    value={data.score}
-                    color={getColorForScore(data.score)}
-                    size="md"
-                    showValue={false}
-                  />
-                  {expandedSkill === key && (
-                    <div className="mt-4 pt-4 border-t border-[var(--card-border)]">
-                      <div className="flex items-start gap-2 bg-[var(--primary)]/5 p-3 rounded-lg">
-                        <svg className="w-5 h-5 text-[var(--primary)] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                )}
+                
+                {/* Analysis Metadata */}
+                <div className="mt-6 pt-4 border-t border-[var(--card-border)]">
+                  <div className="flex flex-wrap gap-4 text-xs text-[var(--muted)]">
+                    <span>
+                      <strong>Analyzed:</strong>{" "}
+                      {new Date(analysisData.meta.analyzed_at).toLocaleString()}
+                    </span>
+                    <span>
+                      <strong>Model:</strong> {analysisData.meta.model}
+                    </span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* Fallback to mock data when no AI analysis is available */
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {Object.entries(mockSkillScores).map(([key, data]) => (
+                  <div
+                    key={key}
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      expandedSkill === key
+                        ? "border-[var(--primary)] bg-[var(--primary)]/5"
+                        : "border-transparent hover:border-[var(--card-border)] hover:bg-[var(--secondary)]/30"
+                    }`}
+                    onClick={() => setExpandedSkill(expandedSkill === key ? null : key)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-[var(--foreground)]">
+                          {skillLabels[key]}
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          data.trend.startsWith("+") 
+                            ? "bg-[var(--success)]/10 text-[var(--success)]"
+                            : "bg-[var(--muted)]/10 text-[var(--muted)]"
+                        }`}>
+                          {data.trend}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-bold ${
+                          data.score >= 75 ? "text-[var(--success)]" :
+                          data.score >= 50 ? "text-[var(--warning)]" : "text-[var(--error)]"
+                        }`}>
+                          {data.score}%
+                        </span>
+                        <svg
+                          className={`w-4 h-4 text-[var(--muted)] transition-transform ${
+                            expandedSkill === key ? "rotate-180" : ""
+                          }`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
-                        <div>
-                          <p className="text-sm font-medium text-[var(--primary)] mb-1">AI Insight</p>
-                          <p className="text-sm text-[var(--foreground)]">{data.aiInsight}</p>
-                        </div>
                       </div>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                    <ProgressBar
+                      value={data.score}
+                      color={getColorForScore(data.score)}
+                      size="md"
+                      showValue={false}
+                    />
+                    {expandedSkill === key && (
+                      <div className="mt-4 pt-4 border-t border-[var(--card-border)]">
+                        <div className="flex items-start gap-2 bg-[var(--primary)]/5 p-3 rounded-lg">
+                          <svg className="w-5 h-5 text-[var(--primary)] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                          </svg>
+                          <div>
+                            <p className="text-sm font-medium text-[var(--primary)] mb-1">AI Insight</p>
+                            <p className="text-sm text-[var(--foreground)]">{data.aiInsight}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="mt-6 pt-6 border-t border-[var(--card-border)]">
               <div className="flex flex-wrap gap-4">
                 <div className="flex items-center gap-2">
@@ -607,99 +938,416 @@ export default function ResultsPage() {
               />
             </svg>
             Skill Gap Analysis
-            <InfoTooltip content="Skills below 70% that have high impact on your goals. Each gap includes actionable steps to improve." />
+            <InfoTooltip content="AI-identified skills below goal level with personalized improvement paths based on your context and time availability." />
           </h2>
-          
-          <Accordion>
-            {mockSkillGaps.map((gap, index) => (
-              <AccordionItem
-                key={index}
-                defaultOpen={index === 0}
-                icon={
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                  </svg>
-                }
-                title={
-                  <div className="flex items-center justify-between flex-1 mr-4">
-                    <span>{gap.skill}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-[var(--muted)]">
-                        {gap.current}% → {gap.target}%
-                      </span>
-                      <Badge variant="warning" size="sm">Gap: {gap.target - gap.current}%</Badge>
-                    </div>
-                  </div>
-                }
-              >
-                <div className="space-y-4">
-                  {/* Progress visualization */}
-                  <div className="relative">
-                    <ProgressBar value={gap.current} max={100} color="warning" showValue={false} size="lg" />
-                    <div 
-                      className="absolute top-0 h-full border-r-2 border-dashed border-[var(--success)]"
-                      style={{ left: `${gap.target}%` }}
-                    >
-                      <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-[var(--success)] font-medium whitespace-nowrap">
-                        Target: {gap.target}%
-                      </span>
-                    </div>
-                  </div>
 
-                  {/* Why this skill matters */}
-                  <div className="bg-[var(--warning)]/10 p-4 rounded-lg">
+          {/* Loading State */}
+          {isLoadingGaps && (
+            <Card className="p-8 text-center">
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-12 h-12 border-4 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
+                <p className="text-[var(--muted)]">Analyzing skill gaps and generating personalized recommendations...</p>
+              </div>
+            </Card>
+          )}
+
+          {/* Error State */}
+          {gapError && !isLoadingGaps && (
+            <Card className="p-6 border-l-4 border-l-[var(--error)]">
+              <div className="flex items-start gap-3">
+                <svg className="w-6 h-6 text-[var(--error)] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <h4 className="font-semibold text-[var(--error)]">Failed to load skill gap analysis</h4>
+                  <p className="text-sm text-[var(--muted)] mt-1">{gapError}</p>
+                  <button 
+                    onClick={() => analysisData && fetchSkillGapAnalysis(analysisData)}
+                    className="mt-3 text-sm text-[var(--primary)] hover:underline"
+                  >
+                    Try again
+                  </button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Success State - Dynamic Data */}
+          {skillGapData && !isLoadingGaps && (
+            <>
+              {/* Summary Card */}
+              <Card className="p-5 mb-6 bg-gradient-to-r from-[var(--warning)]/5 to-[var(--primary)]/5">
+                <div className="flex flex-wrap gap-6 items-start justify-between">
+                  <div className="flex-1 min-w-[200px]">
                     <h4 className="font-semibold text-[var(--foreground)] mb-2 flex items-center gap-2">
-                      <svg className="w-4 h-4 text-[var(--warning)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <svg className="w-4 h-4 text-[var(--primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                       </svg>
-                      Why This Matters
+                      AI Summary
                     </h4>
-                    <p className="text-sm text-[var(--foreground)]">{gap.importance}</p>
+                    <p className="text-sm text-[var(--foreground)]">{skillGapData.overall_summary}</p>
                   </div>
+                  {skillGapData.priority_skills.length > 0 && (
+                    <div className="flex flex-col gap-2 text-right">
+                      <div>
+                        <span className="text-xs text-[var(--muted)]">Priority Focus</span>
+                        <div className="flex flex-wrap gap-1 mt-1 justify-end">
+                          {skillGapData.priority_skills.map((skill, i) => (
+                            <Badge key={i} variant="warning" size="sm">{skill}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-xs text-[var(--muted)]">Recommended Weekly Time</span>
+                        <p className="text-sm font-semibold text-[var(--primary)]">{skillGapData.total_weekly_time_recommended}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
 
-                  {/* AI Prediction */}
-                  <div className="bg-[var(--primary)]/10 p-4 rounded-lg">
-                    <h4 className="font-semibold text-[var(--primary)] mb-2 flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                      </svg>
-                      AI Prediction
-                    </h4>
-                    <p className="text-sm text-[var(--foreground)]">{gap.aiPrediction}</p>
+              {/* No Gaps State */}
+              {skillGapData.skill_gaps.length === 0 && (
+                <Card className="p-6 text-center bg-[var(--success)]/5 border-[var(--success)]/20">
+                  <div className="flex flex-col items-center gap-3">
+                    <svg className="w-12 h-12 text-[var(--success)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <h4 className="font-semibold text-[var(--success)]">All Skills Meet Your Goals!</h4>
+                    <p className="text-sm text-[var(--muted)] max-w-md">
+                      Your current skill levels are at or above your target levels for your stated goals. 
+                      Keep up the great work! Consider setting higher targets or exploring new skill areas.
+                    </p>
                   </div>
+                </Card>
+              )}
 
-                  {/* Actionable Improvement Steps */}
-                  <div>
-                    <h4 className="font-semibold text-[var(--foreground)] mb-3 flex items-center gap-2">
-                      <svg className="w-4 h-4 text-[var(--success)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      How to Improve (Actionable Steps)
-                    </h4>
-                    <div className="space-y-3">
-                      {gap.improvementSteps.map((step, stepIndex) => (
-                        <div 
-                          key={stepIndex}
-                          className="flex items-start gap-3 p-3 bg-white rounded-lg border border-[var(--card-border)]"
-                        >
-                          <span className="w-6 h-6 bg-[var(--primary)] text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
-                            {stepIndex + 1}
-                          </span>
-                          <div className="flex-1">
-                            <p className="text-sm text-[var(--foreground)]">{step.step}</p>
-                            <div className="flex items-center gap-4 mt-2">
-                              <Badge variant="success" size="sm">{step.impact}</Badge>
-                              <span className="text-xs text-[var(--muted)]">⏱️ {step.timeframe}</span>
-                            </div>
+              {/* Skill Gap Accordions */}
+              {skillGapData.skill_gaps.length > 0 && (
+                <Accordion>
+                  {skillGapData.skill_gaps.map((gap, index) => (
+                    <AccordionItem
+                      key={index}
+                      defaultOpen={index === 0}
+                      icon={
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                        </svg>
+                      }
+                      title={
+                        <div className="flex items-center justify-between flex-1 mr-4">
+                          <span>{gap.skill}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-[var(--muted)]">
+                              {gap.current_level}% → {gap.goal_level}%
+                            </span>
+                            <Badge variant="warning" size="sm">Gap: {gap.gap}%</Badge>
+                            <Badge variant="success" size="sm">→ {gap.expected_level_after}%</Badge>
                           </div>
                         </div>
-                      ))}
+                      }
+                    >
+                      <div className="space-y-4">
+                        {/* Progress visualization */}
+                        <div className="relative pt-6">
+                          <ProgressBar value={gap.current_level} max={100} color="warning" showValue={false} size="lg" />
+                          {/* Goal marker */}
+                          <div 
+                          className="absolute top-0 h-full border-r-2 border-dashed border-[var(--success)]"
+                          style={{ left: `${gap.goal_level}%` }}
+                        >
+                          <span className="absolute -top-0 left-1/2 -translate-x-1/2 text-xs text-[var(--success)] font-medium whitespace-nowrap">
+                            Goal: {gap.goal_level}%
+                          </span>
+                        </div>
+                        {/* Expected level marker */}
+                        <div 
+                          className="absolute top-0 h-full border-r-2 border-dotted border-[var(--primary)]"
+                          style={{ left: `${gap.expected_level_after}%` }}
+                        >
+                          <span className="absolute top-8 left-1/2 -translate-x-1/2 text-xs text-[var(--primary)] font-medium whitespace-nowrap">
+                            Expected: {gap.expected_level_after}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Timeline Badge */}
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4 text-[var(--muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-sm text-[var(--muted)]">Estimated timeline: <strong className="text-[var(--foreground)]">{gap.timeline}</strong></span>
+                      </div>
+
+                      {/* Why this skill matters */}
+                      <div className="bg-[var(--warning)]/10 p-4 rounded-lg">
+                        <h4 className="font-semibold text-[var(--foreground)] mb-2 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-[var(--warning)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Why This Matters For Your Goals
+                        </h4>
+                        <p className="text-sm text-[var(--foreground)]">{gap.why_it_matters}</p>
+                      </div>
+
+                      {/* AI Reasoning */}
+                      <div className="bg-[var(--primary)]/10 p-4 rounded-lg">
+                        <h4 className="font-semibold text-[var(--primary)] mb-2 flex items-center gap-2">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                          </svg>
+                          AI Analysis
+                        </h4>
+                        <p className="text-sm text-[var(--foreground)]">{gap.reasoning}</p>
+                      </div>
+
+                      {/* Actionable Improvement Steps */}
+                      <div>
+                        <h4 className="font-semibold text-[var(--foreground)] mb-3 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-[var(--success)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Actionable Steps ({gap.actionable_steps.length})
+                        </h4>
+                        <div className="space-y-3">
+                          {gap.actionable_steps.map((step, stepIndex) => {
+                            const insightKey = `${index}-${stepIndex}`;
+                            const isInsightExpanded = expandedStepInsight === insightKey;
+                            
+                            return (
+                              <div 
+                                key={stepIndex}
+                                className={`p-3 bg-white rounded-lg border border-[var(--card-border)] border-l-4 ${
+                                  step.priority === "high" ? "border-l-[var(--error)]" : 
+                                  step.priority === "medium" ? "border-l-[var(--warning)]" : "border-l-[var(--muted)]"
+                                }`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <span className={`w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                                    step.priority === "high" ? "bg-[var(--error)]" : 
+                                    step.priority === "medium" ? "bg-[var(--warning)]" : "bg-[var(--muted)]"
+                                  }`}>
+                                    {stepIndex + 1}
+                                  </span>
+                                  <div className="flex-1">
+                                    <p className="text-sm text-[var(--foreground)]">{step.step}</p>
+                                    <div className="flex flex-wrap items-center gap-3 mt-2">
+                                      <Badge 
+                                        variant={step.priority === "high" ? "error" : step.priority === "medium" ? "warning" : "default"} 
+                                        size="sm"
+                                      >
+                                        {step.priority} priority
+                                      </Badge>
+                                      <span className="text-xs text-[var(--success)] font-medium">{step.expected_impact}</span>
+                                      <span className="text-xs text-[var(--muted)]">⏱️ {step.time_required}</span>
+                                      
+                                      {/* Insight Toggle Button */}
+                                      <button
+                                        onClick={() => toggleStepInsight(index, stepIndex)}
+                                        className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full transition-colors ${
+                                          isInsightExpanded 
+                                            ? "bg-[var(--primary)] text-white" 
+                                            : "bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)]/20"
+                                        }`}
+                                      >
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                        </svg>
+                                        Why?
+                                        <svg 
+                                          className={`w-3 h-3 transition-transform ${isInsightExpanded ? "rotate-180" : ""}`} 
+                                          fill="none" 
+                                          viewBox="0 0 24 24" 
+                                          stroke="currentColor"
+                                        >
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Expandable Insight Section */}
+                                {isInsightExpanded && step.why && (
+                                  <div className="mt-3 ml-9 p-3 bg-[var(--primary)]/5 rounded-lg border border-[var(--primary)]/20">
+                                    <div className="flex items-start gap-2">
+                                      <svg className="w-4 h-4 text-[var(--primary)] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                      <div>
+                                        <span className="text-xs font-semibold text-[var(--primary)] uppercase tracking-wide">AI Insight</span>
+                                        <p className="text-sm text-[var(--foreground)] mt-1">{step.why}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </AccordionItem>
+                ))}
+                </Accordion>
+              )}
+
+              {/* Skills Without Evidence - Disclaimer Section */}
+              {skillGapData.skills_without_evidence && skillGapData.skills_without_evidence.length > 0 && (
+                <Card className="mt-6 p-5 border-l-4 border-l-[var(--accent)] bg-[var(--accent)]/5">
+                  <h4 className="font-semibold text-[var(--foreground)] mb-3 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Skills Needing More Information
+                  </h4>
+                  <p className="text-sm text-[var(--muted)] mb-4">
+                    We couldn&apos;t find enough evidence for these skills in your responses. To get personalized gap analysis for them, 
+                    consider adding relevant experiences, activities, or achievements in the intake form.
+                  </p>
+                  <div className="space-y-3">
+                    {skillGapData.skills_without_evidence.map((skill, index) => (
+                      <div 
+                        key={index}
+                        className={`flex items-start gap-3 p-3 bg-white rounded-lg border ${
+                          skill.goal_relevance === "high" 
+                            ? "border-[var(--error)]/30" 
+                            : skill.goal_relevance === "medium" 
+                            ? "border-[var(--warning)]/30" 
+                            : "border-[var(--card-border)]"
+                        }`}
+                      >
+                        <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
+                          skill.goal_relevance === "high" 
+                            ? "bg-[var(--error)]" 
+                            : skill.goal_relevance === "medium" 
+                            ? "bg-[var(--warning)]" 
+                            : "bg-[var(--muted)]"
+                        }`} />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-[var(--foreground)]">{skill.display_name}</span>
+                            <Badge 
+                              variant={skill.goal_relevance === "high" ? "error" : skill.goal_relevance === "medium" ? "warning" : "default"} 
+                              size="sm"
+                            >
+                              {skill.goal_relevance} relevance
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-[var(--muted)]">{skill.suggestion}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-[var(--card-border)]">
+                    <a 
+                      href="/analyze" 
+                      className="inline-flex items-center gap-2 text-sm text-[var(--primary)] hover:underline"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Update your responses to include these skills
+                    </a>
+                  </div>
+                </Card>
+              )}
+            </>
+          )}
+
+          {/* Fallback to mock data if no API data and not loading */}
+          {!skillGapData && !isLoadingGaps && !gapError && (
+            <Accordion>
+              {mockSkillGaps.map((gap, index) => (
+                <AccordionItem
+                  key={index}
+                  defaultOpen={index === 0}
+                  icon={
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    </svg>
+                  }
+                  title={
+                    <div className="flex items-center justify-between flex-1 mr-4">
+                      <span>{gap.skill}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-[var(--muted)]">
+                          {gap.current}% → {gap.target}%
+                        </span>
+                        <Badge variant="warning" size="sm">Gap: {gap.target - gap.current}%</Badge>
+                      </div>
+                    </div>
+                  }
+                >
+                  <div className="space-y-4">
+                    {/* Progress visualization */}
+                    <div className="relative">
+                      <ProgressBar value={gap.current} max={100} color="warning" showValue={false} size="lg" />
+                      <div 
+                        className="absolute top-0 h-full border-r-2 border-dashed border-[var(--success)]"
+                        style={{ left: `${gap.target}%` }}
+                      >
+                        <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-[var(--success)] font-medium whitespace-nowrap">
+                          Target: {gap.target}%
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Why this skill matters */}
+                    <div className="bg-[var(--warning)]/10 p-4 rounded-lg">
+                      <h4 className="font-semibold text-[var(--foreground)] mb-2 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-[var(--warning)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Why This Matters
+                      </h4>
+                      <p className="text-sm text-[var(--foreground)]">{gap.importance}</p>
+                    </div>
+
+                    {/* AI Prediction */}
+                    <div className="bg-[var(--primary)]/10 p-4 rounded-lg">
+                      <h4 className="font-semibold text-[var(--primary)] mb-2 flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                        AI Prediction
+                      </h4>
+                      <p className="text-sm text-[var(--foreground)]">{gap.aiPrediction}</p>
+                    </div>
+
+                    {/* Actionable Improvement Steps */}
+                    <div>
+                      <h4 className="font-semibold text-[var(--foreground)] mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-[var(--success)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        How to Improve (Actionable Steps)
+                      </h4>
+                      <div className="space-y-3">
+                        {gap.improvementSteps.map((step, stepIndex) => (
+                          <div 
+                            key={stepIndex}
+                            className="flex items-start gap-3 p-3 bg-white rounded-lg border border-[var(--card-border)]"
+                          >
+                            <span className="w-6 h-6 bg-[var(--primary)] text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
+                              {stepIndex + 1}
+                            </span>
+                            <div className="flex-1">
+                              <p className="text-sm text-[var(--foreground)]">{step.step}</p>
+                              <div className="flex items-center gap-4 mt-2">
+                                <Badge variant="success" size="sm">{step.impact}</Badge>
+                                <span className="text-xs text-[var(--muted)]">⏱️ {step.timeframe}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </AccordionItem>
-            ))}
-          </Accordion>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          )}
         </section>
 
         {/* Enhanced Personalized Recommendations Panel */}

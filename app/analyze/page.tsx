@@ -116,6 +116,8 @@ interface FormData {
 export default function AnalyzePage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const totalSteps = 4;
 
   const [formData, setFormData] = useState<FormData>({
@@ -205,36 +207,88 @@ export default function AnalyzePage() {
     setCurrentStep((prev) => Math.max(prev - 1, 1));
   };
 
-  const handleSubmit = () => {
-    // Prepare the JSON payload for backend AI processing
-    const payload = {
-      // Basic Information
-      grade: formData.grade,
-      interests: formData.interests,
-      interestCategories: formData.interestCategories,
-      
-      // Goals & Learning Preferences
-      goals: formData.goals,
-      customGoal: formData.customGoal || null,
-      timeAvailability: formData.timeAvailability,
-      preferredLearningModes: formData.preferredLearningModes,
-      
-      // Experience & Achievements
-      activities: formData.activities,
-      pastAchievements: formData.pastAchievements || null,
-      
-      // Self-Assessment
-      challenges: formData.challenges || null,
-      skillSelfRatings: formData.skills,
-      
-      // Metadata
-      submittedAt: new Date().toISOString(),
-      formVersion: "2.0",
+  const handleSubmit = async () => {
+    setIsAnalyzing(true);
+    setAnalyzeError(null);
+
+    // Transform form data to match API schema
+    const apiPayload = {
+      grade: parseInt(formData.grade, 10),
+      interests_free_text: formData.interests,
+      interests_by_category: {
+        academic: formData.interestCategories.includes("academic"),
+        creative: formData.interestCategories.includes("creative"),
+        social: formData.interestCategories.includes("social"),
+        technical: formData.interestCategories.includes("technical"),
+        sports: formData.interestCategories.includes("sports"),
+        music: formData.interestCategories.includes("music"),
+        business: formData.interestCategories.includes("business"),
+        health_wellness: formData.interestCategories.includes("health"),
+        other: formData.interestCategories.includes("other"),
+      },
+      goals_selected: formData.goals,
+      goals_free_text: formData.customGoal || undefined,
+      time_availability_hours_per_week: parseTimeAvailability(formData.timeAvailability),
+      learning_preferences: formData.preferredLearningModes,
+      past_activities: formData.activities,
+      past_achievements: formData.pastAchievements || undefined,
     };
-    
-    // Store form data in sessionStorage for the results page
-    sessionStorage.setItem("skillAnalysisData", JSON.stringify(payload));
-    router.push("/results");
+
+    try {
+      const response = await fetch("/api/analyze-student-intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(apiPayload),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.details || result.error || "Analysis failed");
+      }
+
+      // Store both the form data and AI analysis results for the results page
+      const resultsData = {
+        formData: {
+          grade: formData.grade,
+          interests: formData.interests,
+          interestCategories: formData.interestCategories,
+          goals: formData.goals,
+          customGoal: formData.customGoal,
+          timeAvailability: formData.timeAvailability,
+          preferredLearningModes: formData.preferredLearningModes,
+          activities: formData.activities,
+          pastAchievements: formData.pastAchievements,
+          challenges: formData.challenges,
+          skillSelfRatings: formData.skills,
+        },
+        confidence_note: result.confidence_note,
+        aiAnalysis: result.data,
+        meta: result.meta,
+        submittedAt: new Date().toISOString(),
+      };
+
+      sessionStorage.setItem("skillAnalysisData", JSON.stringify(resultsData));
+      router.push("/results");
+    } catch (error) {
+      console.error("Analysis error:", error);
+      setAnalyzeError(
+        error instanceof Error ? error.message : "An unexpected error occurred"
+      );
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Helper to convert time availability string to hours
+  const parseTimeAvailability = (value: string): number => {
+    const mapping: Record<string, number> = {
+      "1-3": 2,
+      "4-6": 5,
+      "7-10": 8,
+      "11-15": 13,
+      "15+": 20,
+    };
+    return mapping[value] || 5;
   };
 
   const stepLabels = ["Basic Info", "Goals & Learning", "Experience", "Self-Assessment"];
@@ -651,6 +705,21 @@ export default function AnalyzePage() {
             </div>
           )}
 
+          {/* Error Display */}
+          {analyzeError && (
+            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-medium text-red-800">Analysis Failed</p>
+                  <p className="text-sm text-red-600 mt-1">{analyzeError}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Navigation Buttons */}
           <div className="flex justify-between mt-8 pt-6 border-t border-[var(--card-border)]">
             {currentStep > 1 ? (
@@ -692,21 +761,48 @@ export default function AnalyzePage() {
                 </svg>
               </Button>
             ) : (
-              <Button onClick={handleSubmit} className="group">
-                Analyze My Skills
-                <svg
-                  className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                  />
-                </svg>
+              <Button onClick={handleSubmit} disabled={isAnalyzing} className="group">
+                {isAnalyzing ? (
+                  <>
+                    <svg
+                      className="w-5 h-5 mr-2 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    Analyze My Skills
+                    <svg
+                      className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
+                  </>
+                )}
               </Button>
             )}
           </div>
