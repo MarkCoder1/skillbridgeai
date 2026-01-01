@@ -14,6 +14,12 @@ import {
   InfoTooltip,
   Accordion,
   AccordionItem,
+  RecommendationCard,
+  type Recommendation,
+  type CourseRecommendation,
+  type ProjectRecommendation,
+  type CompetitionRecommendation,
+  type InternshipRecommendation,
 } from "@/components/ui";
 
 // Enhanced mock data for results with AI insights
@@ -455,17 +461,37 @@ interface SkillGapAnalysis {
   skills_without_evidence: SkillWithoutEvidence[];
 }
 
+// Types for Personalized Recommendations
+interface RecommendationsData {
+  courses: CourseRecommendation[];
+  projects: ProjectRecommendation[];
+  competitions: CompetitionRecommendation[];
+  internships: InternshipRecommendation[];
+  summary: string;
+}
+
+// Filter and sort options for recommendations
+type RecommendationSortBy = "match" | "duration" | "level";
+type RecommendationFilterLevel = "all" | "high" | "medium" | "low";
+
 export default function ResultsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("courses");
   const [actionPlan, setActionPlan] = useState<ActionWeek[]>(mockActionPlan);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
-  const [expandedOpportunity, setExpandedOpportunity] = useState<number | null>(null);
+  const [expandedOpportunity, setExpandedOpportunity] = useState<string | null>(null);
   const [analysisData, setAnalysisData] = useState<AIAnalysisData | null>(null);
   const [skillGapData, setSkillGapData] = useState<SkillGapAnalysis | null>(null);
   const [isLoadingGaps, setIsLoadingGaps] = useState(false);
   const [gapError, setGapError] = useState<string | null>(null);
   const [expandedStepInsight, setExpandedStepInsight] = useState<string | null>(null); // Format: "skillIndex-stepIndex"
+  
+  // Personalized Recommendations State
+  const [recommendationsData, setRecommendationsData] = useState<RecommendationsData | null>(null);
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
+  const [recSortBy, setRecSortBy] = useState<RecommendationSortBy>("match");
+  const [recFilterLevel, setRecFilterLevel] = useState<RecommendationFilterLevel>("all");
 
   // Toggle step insight visibility
   const toggleStepInsight = (skillIndex: number, stepIndex: number) => {
@@ -521,6 +547,116 @@ export default function ResultsPage() {
     }
   };
 
+  // Function to fetch personalized recommendations
+  const fetchPersonalizedRecommendations = async (data: AIAnalysisData, gapData?: SkillGapAnalysis) => {
+    setIsLoadingRecommendations(true);
+    setRecommendationsError(null);
+
+    try {
+      // Parse time availability to hours
+      const timeMapping: Record<string, number> = {
+        "1-3": 2, "4-6": 5, "7-10": 8, "11-15": 13, "15+": 20,
+      };
+      const timeHours = timeMapping[data.formData.timeAvailability] || 5;
+
+      // Build skill gaps for recommendations
+      const skillGaps = gapData?.skill_gaps?.map(gap => ({
+        skill: gap.skill,
+        current_level: gap.current_level,
+        goal_level: gap.goal_level,
+        gap: gap.gap,
+      })) || [];
+
+      // Build request payload
+      const payload = {
+        student_profile: {
+          grade: parseInt(data.formData.grade) || 10,
+          interests: data.formData.interests,
+          interest_categories: data.formData.interestCategories,
+          goals: data.formData.goals,
+          goals_free_text: data.formData.customGoal,
+          time_availability_hours_per_week: timeHours,
+          learning_preferences: data.formData.preferredLearningModes,
+        },
+        skill_snapshot: data.aiAnalysis.skill_signals,
+        skill_gap_analysis: {
+          skill_gaps: skillGaps,
+          priority_skills: gapData?.priority_skills || [],
+          overall_summary: gapData?.overall_summary || "",
+        },
+      };
+
+      const response = await fetch("/api/personalized-recommendations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setRecommendationsData(result.data);
+        console.log("Personalized Recommendations loaded:", result.data);
+      } else {
+        throw new Error(result.details || result.error || "Failed to get recommendations");
+      }
+    } catch (error) {
+      console.error("Recommendations error:", error);
+      setRecommendationsError(error instanceof Error ? error.message : "Failed to load recommendations");
+    } finally {
+      setIsLoadingRecommendations(false);
+    }
+  };
+
+  // Helper to get match level from score
+  const getRecMatchLevel = (score: number): "high" | "medium" | "low" => {
+    if (score >= 85) return "high";
+    if (score >= 70) return "medium";
+    return "low";
+  };
+
+  // Get filtered and sorted recommendations for current tab
+  const getFilteredRecommendations = (): Recommendation[] => {
+    if (!recommendationsData) return [];
+    
+    let recs: Recommendation[] = [];
+    switch (activeTab) {
+      case "courses":
+        recs = recommendationsData.courses;
+        break;
+      case "projects":
+        recs = recommendationsData.projects;
+        break;
+      case "competitions":
+        recs = recommendationsData.competitions;
+        break;
+      case "internships":
+        recs = recommendationsData.internships;
+        break;
+    }
+
+    // Apply filter
+    if (recFilterLevel !== "all") {
+      recs = recs.filter(rec => getRecMatchLevel(rec.match_score) === recFilterLevel);
+    }
+
+    // Apply sort
+    switch (recSortBy) {
+      case "match":
+        recs = [...recs].sort((a, b) => b.match_score - a.match_score);
+        break;
+      case "duration":
+        recs = [...recs].sort((a, b) => a.duration_weeks - b.duration_weeks);
+        break;
+      case "level":
+        const levelOrder = { "Beginner": 0, "Intermediate": 1, "Advanced": 2 };
+        recs = [...recs].sort((a, b) => levelOrder[a.level] - levelOrder[b.level]);
+        break;
+    }
+
+    return recs;
+  };
+
   useEffect(() => {
     // Load analysis data from sessionStorage
     const storedData = sessionStorage.getItem("skillAnalysisData");
@@ -543,6 +679,13 @@ export default function ResultsPage() {
     }, 1500);
     return () => clearTimeout(timer);
   }, []);
+
+  // Fetch personalized recommendations when skill gap data is available
+  useEffect(() => {
+    if (analysisData && skillGapData && !recommendationsData && !isLoadingRecommendations) {
+      fetchPersonalizedRecommendations(analysisData, skillGapData);
+    }
+  }, [skillGapData, analysisData]);
 
   const toggleTask = (weekIndex: number, taskId: number) => {
     setActionPlan((prev) =>
@@ -1350,7 +1493,7 @@ export default function ResultsPage() {
           )}
         </section>
 
-        {/* Enhanced Personalized Recommendations Panel */}
+        {/* AI-Powered Personalized Recommendations Panel */}
         <section className="mb-12">
           <h2 className="text-2xl font-bold text-[var(--foreground)] mb-6 flex items-center gap-2">
             <svg
@@ -1367,189 +1510,194 @@ export default function ResultsPage() {
               />
             </svg>
             Personalized Recommendations
-            <InfoTooltip content="Each recommendation includes match %, AI reasoning, and expected skill improvements" />
+            <InfoTooltip content="AI-generated recommendations based on your skills, goals, and interests. Each includes match %, reasoning, and expected skill improvements." />
           </h2>
 
-          {/* Match Level Legend */}
-          <div className="flex flex-wrap gap-4 mb-6 p-4 bg-[var(--secondary)]/50 rounded-xl">
-            <span className="text-sm text-[var(--muted)]">Match Level:</span>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[var(--success)]" />
-              <span className="text-sm text-[var(--foreground)]">High (85%+)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[var(--warning)]" />
-              <span className="text-sm text-[var(--foreground)]">Medium (70-84%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[var(--error)]" />
-              <span className="text-sm text-[var(--foreground)]">Low (&lt;70%)</span>
-            </div>
-          </div>
+          {/* Loading State */}
+          {isLoadingRecommendations && (
+            <Card padding="lg" className="mb-6">
+              <div className="flex items-center justify-center gap-4 py-8">
+                <div className="w-8 h-8 border-3 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
+                <span className="text-[var(--muted)]">Generating personalized recommendations...</span>
+              </div>
+            </Card>
+          )}
 
-          {/* Tabs */}
-          <div className="flex flex-wrap gap-2 mb-6 border-b border-[var(--card-border)] pb-2">
-            {[
-              { key: "courses", label: "Courses", icon: "📚", count: mockOpportunities.courses.length },
-              { key: "projects", label: "Projects", icon: "🛠️", count: mockOpportunities.projects.length },
-              { key: "competitions", label: "Competitions", icon: "🏆", count: mockOpportunities.competitions.length },
-              { key: "internships", label: "Internships", icon: "💼", count: mockOpportunities.internships.length },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key as TabType)}
-                className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
-                  activeTab === tab.key
-                    ? "bg-[var(--primary)] text-white"
-                    : "bg-[var(--secondary)] text-[var(--muted)] hover:bg-[var(--primary)]/10"
-                }`}
-              >
-                <span>{tab.icon}</span>
-                {tab.label}
-                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  activeTab === tab.key 
-                    ? "bg-white/20 text-white" 
-                    : "bg-[var(--muted)]/20"
-                }`}>
-                  {tab.count}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          {/* Enhanced Opportunity Cards */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {mockOpportunities[activeTab].map((item) => (
-              <Card 
-                key={item.id} 
-                padding="none" 
-                hover 
-                className={`overflow-hidden ${
-                  expandedOpportunity === item.id ? "ring-2 ring-[var(--primary)]" : ""
-                }`}
-              >
-                {/* Match Level Indicator Bar */}
-                <div className={`h-1 ${getMatchLevelColor(item.matchLevel)}`} />
-                
-                <div className="p-6">
-                  <CardHeader className="mb-0">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className={`w-2 h-2 rounded-full ${getMatchLevelColor(item.matchLevel)}`} />
-                          <CardTitle className="text-lg">{item.title}</CardTitle>
-                        </div>
-                        <CardDescription>
-                          {"provider" in item && item.provider}
-                          {"type" in item && item.type}
-                          {"organizer" in item && item.organizer}
-                          {"company" in item && item.company}
-                        </CardDescription>
-                      </div>
-                      <Badge variant={getMatchLevelBadge(item.matchLevel)} className="flex-shrink-0">
-                        {item.match}% Match
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent className="mt-4">
-                    {/* Why it matches */}
-                    <div className="mb-4">
-                      <p className="text-sm text-[var(--foreground)]">{item.reason}</p>
-                    </div>
-
-                    {/* Expected Benefits */}
-                    <div className="mb-4">
-                      <p className="text-xs font-semibold text-[var(--muted)] uppercase mb-2">Expected Skill Improvements</p>
-                      <div className="flex flex-wrap gap-2">
-                        {item.expectedBenefits.map((benefit, idx) => (
-                          <span 
-                            key={idx}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-[var(--success)]/10 text-[var(--success)] text-xs rounded-full"
-                          >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                            </svg>
-                            {benefit.skill} {benefit.improvement}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Meta info */}
-                    <div className="flex flex-wrap gap-3 text-xs text-[var(--muted)] mb-4">
-                      {"duration" in item && (
-                        <span className="flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          {item.duration}
-                        </span>
-                      )}
-                      {"level" in item && (
-                        <span className="flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                          {item.level}
-                        </span>
-                      )}
-                      {"deadline" in item && (
-                        <span className="flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          {item.deadline}
-                        </span>
-                      )}
-                      {"difficulty" in item && (
-                        <Badge variant="info" size="sm">{item.difficulty}</Badge>
-                      )}
-                      {"skills" in item && item.skills.map((skill: string) => (
-                        <Badge key={skill} variant="default" size="sm">{skill}</Badge>
-                      ))}
-                    </div>
-
-                    {/* Expandable AI Reasoning */}
-                    <button
-                      onClick={() => setExpandedOpportunity(expandedOpportunity === item.id ? null : item.id)}
-                      className="w-full text-left"
-                    >
-                      <div className={`p-3 rounded-lg border transition-all ${
-                        expandedOpportunity === item.id 
-                          ? "border-[var(--primary)] bg-[var(--primary)]/5" 
-                          : "border-[var(--card-border)] hover:border-[var(--primary)]/50"
-                      }`}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-[var(--primary)] flex items-center gap-2">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                            </svg>
-                            View AI Reasoning
-                          </span>
-                          <svg 
-                            className={`w-4 h-4 text-[var(--primary)] transition-transform ${
-                              expandedOpportunity === item.id ? "rotate-180" : ""
-                            }`}
-                            fill="none" 
-                            viewBox="0 0 24 24" 
-                            stroke="currentColor"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
-                        {expandedOpportunity === item.id && (
-                          <p className="mt-3 text-sm text-[var(--foreground)] border-t border-[var(--card-border)] pt-3">
-                            {item.aiReasoning}
-                          </p>
-                        )}
-                      </div>
-                    </button>
-                  </CardContent>
+          {/* Error State */}
+          {recommendationsError && !isLoadingRecommendations && (
+            <Card padding="lg" className="mb-6 border-[var(--error)]/30 bg-[var(--error)]/5">
+              <div className="flex items-center gap-3">
+                <svg className="w-6 h-6 text-[var(--error)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="font-medium text-[var(--error)]">Failed to load recommendations</p>
+                  <p className="text-sm text-[var(--muted)]">{recommendationsError}</p>
                 </div>
-              </Card>
-            ))}
-          </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => analysisData && fetchPersonalizedRecommendations(analysisData, skillGapData || undefined)}
+                  className="ml-auto"
+                >
+                  Retry
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {/* Recommendations Content */}
+          {recommendationsData && !isLoadingRecommendations && (
+            <>
+              {/* Match Level Legend & Filters */}
+              <div className="flex flex-wrap gap-4 mb-6 p-4 bg-[var(--secondary)]/50 rounded-xl items-center justify-between">
+                <div className="flex flex-wrap gap-4 items-center">
+                  <span className="text-sm text-[var(--muted)]">Match Level:</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-[var(--success)]" />
+                    <span className="text-sm text-[var(--foreground)]">High (85%+)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-[var(--warning)]" />
+                    <span className="text-sm text-[var(--foreground)]">Medium (70-84%)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-[var(--error)]" />
+                    <span className="text-sm text-[var(--foreground)]">Low (&lt;70%)</span>
+                  </div>
+                </div>
+                
+                {/* Sort & Filter Controls */}
+                <div className="flex gap-3 items-center">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[var(--muted)]">Sort:</span>
+                    <select
+                      value={recSortBy}
+                      onChange={(e) => setRecSortBy(e.target.value as RecommendationSortBy)}
+                      className="text-sm px-2 py-1 rounded-md border border-[var(--card-border)] bg-[var(--background)] text-[var(--foreground)]"
+                    >
+                      <option value="match">Match Score</option>
+                      <option value="duration">Duration</option>
+                      <option value="level">Level</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[var(--muted)]">Filter:</span>
+                    <select
+                      value={recFilterLevel}
+                      onChange={(e) => setRecFilterLevel(e.target.value as RecommendationFilterLevel)}
+                      className="text-sm px-2 py-1 rounded-md border border-[var(--card-border)] bg-[var(--background)] text-[var(--foreground)]"
+                    >
+                      <option value="all">All Levels</option>
+                      <option value="high">High Match</option>
+                      <option value="medium">Medium Match</option>
+                      <option value="low">Low Match</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex flex-wrap gap-2 mb-6 border-b border-[var(--card-border)] pb-2">
+                {[
+                  { key: "courses", label: "Courses", icon: "📚", count: recommendationsData.courses.length },
+                  { key: "projects", label: "Projects", icon: "🛠️", count: recommendationsData.projects.length },
+                  { key: "competitions", label: "Competitions", icon: "🏆", count: recommendationsData.competitions.length },
+                  { key: "internships", label: "Internships", icon: "💼", count: recommendationsData.internships.length },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key as TabType)}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
+                      activeTab === tab.key
+                        ? "bg-[var(--primary)] text-white"
+                        : "bg-[var(--secondary)] text-[var(--muted)] hover:bg-[var(--primary)]/10"
+                    }`}
+                  >
+                    <span>{tab.icon}</span>
+                    {tab.label}
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      activeTab === tab.key 
+                        ? "bg-white/20 text-white" 
+                        : "bg-[var(--muted)]/20"
+                    }`}>
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Dynamic Recommendation Cards */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {getFilteredRecommendations().length === 0 ? (
+                  <Card padding="lg" className="lg:col-span-2">
+                    <div className="text-center py-8 text-[var(--muted)]">
+                      <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p>No recommendations match your current filter.</p>
+                      <button
+                        onClick={() => setRecFilterLevel("all")}
+                        className="mt-2 text-[var(--primary)] hover:underline text-sm"
+                      >
+                        Clear filter
+                      </button>
+                    </div>
+                  </Card>
+                ) : (
+                  getFilteredRecommendations().map((rec, index) => (
+                    <RecommendationCard
+                      key={`${rec.type}-${rec.title}-${index}`}
+                      recommendation={rec}
+                      expanded={expandedOpportunity === rec.title}
+                      onToggleExpand={() => setExpandedOpportunity(expandedOpportunity === rec.title ? null : rec.title)}
+                    />
+                  ))
+                )}
+              </div>
+
+              {/* Summary Stats */}
+              <div className="mt-6 p-4 bg-[var(--secondary)]/30 rounded-xl">
+                <div className="flex flex-wrap gap-6 justify-center text-center">
+                  <div>
+                    <p className="text-2xl font-bold text-[var(--primary)]">{recommendationsData.courses.length}</p>
+                    <p className="text-xs text-[var(--muted)]">Courses</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-[var(--accent)]">{recommendationsData.projects.length}</p>
+                    <p className="text-xs text-[var(--muted)]">Projects</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-[var(--warning)]">{recommendationsData.competitions.length}</p>
+                    <p className="text-xs text-[var(--muted)]">Competitions</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-[var(--success)]">{recommendationsData.internships.length}</p>
+                    <p className="text-xs text-[var(--muted)]">Internships</p>
+                  </div>
+                  <div className="border-l border-[var(--card-border)] pl-6">
+                    <p className="text-2xl font-bold text-[var(--foreground)]">
+                      {[...recommendationsData.courses, ...recommendationsData.projects, ...recommendationsData.competitions, ...recommendationsData.internships]
+                        .filter(r => r.match_score >= 85).length}
+                    </p>
+                    <p className="text-xs text-[var(--muted)]">High Match</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* No data state */}
+          {!recommendationsData && !isLoadingRecommendations && !recommendationsError && (
+            <Card padding="lg">
+              <div className="text-center py-8 text-[var(--muted)]">
+                <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p>Complete skill analysis to receive personalized recommendations.</p>
+              </div>
+            </Card>
+          )}
         </section>
 
         {/* Enhanced 30-Day Action Plan Panel */}

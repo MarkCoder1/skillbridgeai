@@ -6,3 +6,13 @@ export { Slider } from "./Slider";
 export { Badge } from "./Badge";
 export { Tooltip, InfoTooltip } from "./Tooltip";
 export { Accordion, AccordionItem } from "./Accordion";
+export { 
+  RecommendationCard, 
+  RecommendationGrid,
+  type Recommendation,
+  type CourseRecommendation,
+  type ProjectRecommendation,
+  type CompetitionRecommendation,
+  type InternshipRecommendation,
+  type SkillAlignment,
+} from "./RecommendationCard";
