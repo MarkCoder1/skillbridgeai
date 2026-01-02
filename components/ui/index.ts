@@ -13,6 +13,5 @@ export {
   type CourseRecommendation,
   type ProjectRecommendation,
   type CompetitionRecommendation,
-  type InternshipRecommendation,
   type SkillAlignment,
 } from "./RecommendationCard";

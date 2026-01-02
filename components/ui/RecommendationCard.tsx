@@ -15,7 +15,7 @@ export interface SkillAlignment {
 }
 
 export interface BaseRecommendation {
-  type: "course" | "project" | "competition" | "internship";
+  type: "course" | "project" | "competition";
   title: string;
   platform_or_provider: string;
   match_score: number;
@@ -24,7 +24,6 @@ export interface BaseRecommendation {
   duration_weeks: number;
   level: "Beginner" | "Intermediate" | "Advanced";
   reasoning: string;
-  link?: string;
 }
 
 export interface CourseRecommendation extends BaseRecommendation {
@@ -44,17 +43,10 @@ export interface CompetitionRecommendation extends BaseRecommendation {
   prize?: string;
 }
 
-export interface InternshipRecommendation extends BaseRecommendation {
-  type: "internship";
-  paid?: boolean;
-  remote?: boolean;
-}
-
 export type Recommendation = 
   | CourseRecommendation 
   | ProjectRecommendation 
-  | CompetitionRecommendation 
-  | InternshipRecommendation;
+  | CompetitionRecommendation;
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -98,7 +90,7 @@ function getLevelColor(level: "Beginner" | "Intermediate" | "Advanced") {
   }
 }
 
-function getTypeIcon(type: "course" | "project" | "competition" | "internship") {
+function getTypeIcon(type: "course" | "project" | "competition") {
   switch (type) {
     case "course":
       return (
@@ -116,12 +108,6 @@ function getTypeIcon(type: "course" | "project" | "competition" | "internship") 
       return (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-        </svg>
-      );
-    case "internship":
-      return (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
         </svg>
       );
   }
@@ -263,16 +249,6 @@ export function RecommendationCard({
             {recommendation.project_type}
           </Badge>
         )}
-        {recommendation.type === "internship" && (
-          <>
-            {recommendation.paid && (
-              <Badge variant="success" size="sm">Paid</Badge>
-            )}
-            {recommendation.remote && (
-              <Badge variant="default" size="sm">Remote</Badge>
-            )}
-          </>
-        )}
         {recommendation.type === "competition" && recommendation.prize && (
           <Badge variant="warning" size="sm">🏆 {recommendation.prize}</Badge>
         )}
@@ -375,26 +351,6 @@ export function RecommendationCard({
           </div>
         )}
       </div>
-
-      {/* Action Button */}
-      {recommendation.link && (
-        <div className="mt-4">
-          <a
-            href={recommendation.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--primary)] text-white rounded-lg hover:bg-[var(--primary)]/90 transition-colors text-sm font-medium"
-          >
-            {recommendation.type === "course" && "Start Course"}
-            {recommendation.type === "project" && "View Project"}
-            {recommendation.type === "competition" && "Register Now"}
-            {recommendation.type === "internship" && "Apply Now"}
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-          </a>
-        </div>
-      )}
     </Card>
   );
 }

@@ -327,14 +327,21 @@ OUTPUT FORMAT (strict JSON only):
   "total_weekly_time_recommended": "X hours/week"
 }
 
+SOFT SKILLS PRIORITY:
+Soft skills (communication, leadership, self_management) are CRITICAL for college applications, scholarships, and career success.
+- If a soft skill has NO EVIDENCE or LOW CONFIDENCE (<50%), it should STILL be included in skill_gaps
+- For soft skills without evidence, set current_level to a low baseline (15-25%) to reflect the development need
+- These skills need EXTRA attention because they're often overlooked but highly valued
+
 IMPORTANT:
-- ONLY include skills where gap > 0 (current_level < goal_level) AND evidence_found is true
-- DO NOT include skills that have NO EVIDENCE (evidence_found: false) - these will be handled separately
-- DO NOT include skills that are already at or above goal level
-- Sort skill_gaps by gap size (largest gap first)
-- Priority skills should align with student goals AND have significant gaps AND have evidence
+- Include skills where gap > 0 (current_level < goal_level) AND evidence_found is true
+- ALSO include SOFT SKILLS (communication, leadership, self_management) that have NO EVIDENCE or LOW CONFIDENCE - these are critical gaps
+- For soft skills without evidence: acknowledge the lack of evidence and recommend ways to BUILD and DEMONSTRATE these skills
+- DO NOT include technical skills or problem-solving without evidence (these require demonstrated competency)
+- Sort skill_gaps by: soft skills without evidence first (highest priority), then by gap size
+- Priority skills should prioritize soft skills without evidence + skills with significant gaps
 - Be encouraging but realistic in expected improvements
-- If a skill has no gap, negative gap, or no evidence, EXCLUDE it from skill_gaps array`;
+- For soft skills without evidence, actionable steps should focus on BOTH building the skill AND creating demonstrable evidence`;
 
 // =============================================================================
 // SECTION 5: HELPER FUNCTIONS
@@ -377,8 +384,18 @@ function buildUserPrompt(
     ? `SKILLS WITH EVIDENCE (analyze these for gaps):\n${skillsWithEvidence.join('\n\n')}`
     : 'No skills with evidence found.';
   
+  // Identify soft skills without evidence that need special attention
+  const softSkillsWithoutEvidence = ['communication', 'leadership', 'self_management'].filter(
+    skill => !skillSnapshot[skill as keyof SkillSnapshot].evidence_found || 
+             skillSnapshot[skill as keyof SkillSnapshot].confidence < 0.5
+  );
+  
   const noEvidenceNote = skillsWithoutEvidence.length > 0
-    ? `\n\nSKILLS WITHOUT EVIDENCE (DO NOT include in skill_gaps):\n${skillsWithoutEvidence.join('\n\n')}`
+    ? `\n\nSKILLS WITHOUT EVIDENCE:\n${skillsWithoutEvidence.join('\n\n')}`
+    : '';
+  
+  const softSkillsNote = softSkillsWithoutEvidence.length > 0
+    ? `\n\n⚠️ CRITICAL SOFT SKILLS NEEDING DEVELOPMENT:\nThe following soft skills have NO or LOW evidence and MUST be included in skill_gaps with actionable steps:\n${softSkillsWithoutEvidence.map(s => `- ${s.toUpperCase()}: No/low evidence found - this is a PRIORITY gap that needs addressing`).join('\n')}\n\nFor these soft skills, set current_level to 20% (baseline without evidence) and include steps to BOTH build the skill AND create demonstrable evidence (portfolios, leadership roles, presentations, etc.)`
     : '';
 
   return `STUDENT CONTEXT:
@@ -390,9 +407,12 @@ function buildUserPrompt(
 - Learning Preferences: ${studentContext.learning_preferences?.join(', ') || 'Not specified'}
 
 SKILL SNAPSHOT ANALYSIS:
-${skillSummary}${noEvidenceNote}
+${skillSummary}${noEvidenceNote}${softSkillsNote}
 
-IMPORTANT: Only include skills WITH evidence in the skill_gaps array. Skills without evidence should be excluded.
+IMPORTANT: 
+- Include skills WITH evidence that have gaps
+- ALSO include soft skills (communication, leadership, self_management) WITHOUT evidence - these are CRITICAL gaps
+- For soft skills without evidence, use 20% as the current_level baseline
 
 Generate a comprehensive skill gap analysis with actionable recommendations. Return ONLY the JSON object.`;
 }
@@ -453,7 +473,142 @@ function parseAndValidateResponse(rawResponse: string): AIResponse {
 }
 
 // =============================================================================
-// SECTION 6: API ROUTE HANDLER
+// SECTION 6: SOFT SKILL STEP GENERATOR
+// =============================================================================
+
+/**
+ * Generates actionable steps for soft skills without evidence
+ * These steps focus on BOTH building the skill AND creating demonstrable evidence
+ */
+function generateSoftSkillSteps(
+  skillKey: string,
+  displayName: string,
+  context: StudentContext
+): Array<{
+  step: string;
+  time_required: string;
+  expected_impact: string;
+  priority: "high" | "medium" | "low";
+  why: string;
+}> {
+  const gradeLevel = context.grade;
+  const isHighSchool = gradeLevel >= 9;
+  
+  const stepsBySkill: Record<string, Array<{
+    step: string;
+    time_required: string;
+    expected_impact: string;
+    priority: "high" | "medium" | "low";
+    why: string;
+  }>> = {
+    communication: [
+      {
+        step: "Join a debate club, speech team, or Model UN to practice public speaking",
+        time_required: "2-3 hours/week",
+        expected_impact: "+5-8%",
+        priority: "high",
+        why: "Structured speaking activities provide both skill development AND documented evidence through competitions and participation records that strengthen college applications."
+      },
+      {
+        step: "Start a blog, YouTube channel, or podcast about a topic you're passionate about",
+        time_required: "2-3 hours/week",
+        expected_impact: "+4-6%",
+        priority: "high",
+        why: "Creating content demonstrates initiative and communication skills while building a portfolio of evidence you can reference in applications."
+      },
+      {
+        step: "Volunteer to present in class or lead study group discussions",
+        time_required: "1-2 hours/week",
+        expected_impact: "+3-5%",
+        priority: "medium",
+        why: "Regular practice in low-stakes environments builds confidence and teachers can later provide recommendations noting your communication growth."
+      },
+      {
+        step: "Write for the school newspaper, literary magazine, or online publication",
+        time_required: "2-4 hours/week",
+        expected_impact: "+4-6%",
+        priority: "medium",
+        why: "Published writing provides tangible evidence of communication skills that can be shared with colleges and employers."
+      }
+    ],
+    leadership: [
+      {
+        step: "Run for a position in student government, club officer role, or team captain",
+        time_required: "3-5 hours/week",
+        expected_impact: "+6-10%",
+        priority: "high",
+        why: "Formal leadership titles provide clear, verifiable evidence of leadership experience that colleges and scholarships specifically look for."
+      },
+      {
+        step: "Start a new club, community project, or initiative at school",
+        time_required: "3-4 hours/week",
+        expected_impact: "+5-8%",
+        priority: "high",
+        why: "Founding something demonstrates initiative, vision, and leadership beyond just holding a title - qualities highly valued in applications."
+      },
+      {
+        step: "Organize a team for a competition, hackathon, or community service project",
+        time_required: "2-3 hours/week",
+        expected_impact: "+4-6%",
+        priority: "medium",
+        why: "Leading a team toward a goal shows practical leadership skills and creates a concrete accomplishment to discuss in essays and interviews."
+      },
+      {
+        step: "Mentor younger students in academics, sports, or extracurricular activities",
+        time_required: "1-2 hours/week",
+        expected_impact: "+3-5%",
+        priority: "medium",
+        why: "Mentoring demonstrates maturity and the ability to guide others - a key leadership quality that also builds meaningful relationships."
+      }
+    ],
+    self_management: [
+      {
+        step: "Use a planner or digital tool (Notion, Todoist) to track all commitments and deadlines",
+        time_required: "30 min/day",
+        expected_impact: "+4-6%",
+        priority: "high",
+        why: "Consistent use of planning tools builds habits that directly improve academic performance and time management - results that speak for themselves."
+      },
+      {
+        step: "Set and track weekly SMART goals with measurable outcomes",
+        time_required: "1 hour/week",
+        expected_impact: "+3-5%",
+        priority: "high",
+        why: "Goal-setting creates a record of your growth and achievements that you can reference in applications to demonstrate self-improvement."
+      },
+      {
+        step: "Implement the Pomodoro technique or time-blocking for focused study sessions",
+        time_required: "Built into study time",
+        expected_impact: "+3-5%",
+        priority: "medium",
+        why: "Structured study methods improve academic results, which serve as indirect evidence of strong self-management skills."
+      },
+      {
+        step: "Take on a long-term independent project (research, portfolio, certification course)",
+        time_required: "2-4 hours/week",
+        expected_impact: "+4-7%",
+        priority: "medium",
+        why: "Completing self-directed projects over months demonstrates discipline and persistence - qualities you can highlight in college essays."
+      }
+    ]
+  };
+  
+  // Normalize key for lookup
+  const normalizedKey = skillKey.toLowerCase().replace(/[\s_-]/g, '_');
+  
+  return stepsBySkill[normalizedKey] || [
+    {
+      step: `Seek opportunities to develop and demonstrate ${displayName} skills`,
+      time_required: "2-3 hours/week",
+      expected_impact: "+3-5%",
+      priority: "high",
+      why: `Building ${displayName} skills and creating evidence of them will strengthen your overall profile.`
+    }
+  ];
+}
+
+// =============================================================================
+// SECTION 7: API ROUTE HANDLER
 // =============================================================================
 
 export async function POST(request: NextRequest) {
@@ -578,22 +733,98 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Soft skills that are critical even without evidence
+    const criticalSoftSkills = new Set(['communication', 'leadership', 'selfmanagement', 'self_management']);
+    
     // Post-process: Filter out skills with no gap, negative gap, OR no evidence
+    // EXCEPTION: Soft skills (communication, leadership, self_management) are kept even without evidence
     validatedResponse.skill_gaps = validatedResponse.skill_gaps.filter((skill) => {
       const skillKey = skill.skill.toLowerCase().replace(/[\s_-]/g, '');
+      const isSoftSkill = criticalSoftSkills.has(skillKey);
+      
+      // Keep soft skills even without evidence if they have a gap
+      if (isSoftSkill && skill.gap > 0) {
+        return true;
+      }
+      
+      // For other skills, require both evidence and positive gap
       return skill.gap > 0 && skillsWithEvidence.has(skillKey);
     });
+    
+    // Check if any critical soft skills are missing from AI response but have low/no evidence
+    const existingSkillKeys = new Set(validatedResponse.skill_gaps.map(g => g.skill.toLowerCase().replace(/[\s_-]/g, '')));
+    
+    for (const [skillKey, data] of Object.entries(skill_snapshot)) {
+      const normalizedKey = skillKey.toLowerCase().replace(/[\s_-]/g, '');
+      const isSoftSkill = criticalSoftSkills.has(normalizedKey);
+      
+      // If it's a soft skill with no/low evidence and not in the gaps, add it
+      if (isSoftSkill && !existingSkillKeys.has(normalizedKey)) {
+        const hasLowEvidence = !data.evidence_found || data.confidence < 0.5;
+        const goalLevel = goalLevels[skillKey] || 70;
+        const currentLevel = hasLowEvidence ? 20 : Math.round(data.confidence * 100);
+        const gap = goalLevel - currentLevel;
+        
+        if (gap > 0 && hasLowEvidence) {
+          // Add this soft skill as a critical gap
+          validatedResponse.skill_gaps.push({
+            skill: skillKey,
+            current_level: currentLevel,
+            goal_level: goalLevel,
+            gap: gap,
+            expected_level_after: Math.min(currentLevel + 15, goalLevel), // Realistic 4-week improvement
+            timeline: "4-6 weeks",
+            why_it_matters: `${skillDisplayNames[skillKey]} is essential for college applications, scholarships, and career success. Currently, you have limited demonstrable evidence of this skill, making it a priority area for development.`,
+            actionable_steps: generateSoftSkillSteps(skillKey, skillDisplayNames[skillKey], student_context),
+            reasoning: `No clear evidence of ${skillDisplayNames[skillKey]} was found in your profile. This is a critical soft skill that colleges, employers, and scholarship committees actively look for. Building and documenting this skill will significantly strengthen your profile.`,
+          });
+        }
+      }
+    }
 
-    // Update priority_skills to only include skills that are in the filtered gaps
+    // Sort skill_gaps: soft skills without evidence first (highest priority), then by gap size
+    validatedResponse.skill_gaps.sort((a, b) => {
+      const aKey = a.skill.toLowerCase().replace(/[\s_-]/g, '');
+      const bKey = b.skill.toLowerCase().replace(/[\s_-]/g, '');
+      const aIsSoftWithoutEvidence = criticalSoftSkills.has(aKey) && !skillsWithEvidence.has(aKey);
+      const bIsSoftWithoutEvidence = criticalSoftSkills.has(bKey) && !skillsWithEvidence.has(bKey);
+      
+      // Soft skills without evidence come first
+      if (aIsSoftWithoutEvidence && !bIsSoftWithoutEvidence) return -1;
+      if (!aIsSoftWithoutEvidence && bIsSoftWithoutEvidence) return 1;
+      
+      // Then sort by gap size (largest first)
+      return b.gap - a.gap;
+    });
+    
+    // Update priority_skills to prioritize soft skills without evidence
     const gapSkillNames = validatedResponse.skill_gaps.map(g => g.skill.toLowerCase().replace(/[\s_-]/g, ''));
-    validatedResponse.priority_skills = validatedResponse.priority_skills.filter(
-      (skill) => gapSkillNames.includes(skill.toLowerCase().replace(/[\s_-]/g, ''))
-    );
+    
+    // Get soft skills without evidence that are in gaps
+    const softSkillsInGaps = validatedResponse.skill_gaps
+      .filter(g => {
+        const key = g.skill.toLowerCase().replace(/[\s_-]/g, '');
+        return criticalSoftSkills.has(key) && !skillsWithEvidence.has(key);
+      })
+      .map(g => g.skill);
+    
+    // Prioritize soft skills without evidence, then other high-gap skills
+    validatedResponse.priority_skills = [
+      ...softSkillsInGaps,
+      ...validatedResponse.priority_skills.filter(
+        skill => !softSkillsInGaps.includes(skill) && gapSkillNames.includes(skill.toLowerCase().replace(/[\s_-]/g, ''))
+      )
+    ].slice(0, 3); // Top 3 priority skills
 
-    // Build extended response with skills without evidence
+    // Build extended response - exclude soft skills from skills_without_evidence since they're now in gaps
+    const finalSkillsWithoutEvidence = skillsWithoutEvidence.filter(s => {
+      const key = s.skill.toLowerCase().replace(/[\s_-]/g, '');
+      return !criticalSoftSkills.has(key); // Only keep non-soft skills in this list
+    });
+    
     const extendedResponse: ExtendedResponse = {
       ...validatedResponse,
-      skills_without_evidence: skillsWithoutEvidence,
+      skills_without_evidence: finalSkillsWithoutEvidence,
     };
 
     // Return response
