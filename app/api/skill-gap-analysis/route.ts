@@ -29,7 +29,7 @@ import { z } from "zod";
 /**
  * Valid evidence sources for provenance tracking
  */
-const EvidenceSourceSchema = z.enum(["interests", "goals", "past_activities", "achievements"]);
+const EvidenceSourceSchema = z.enum(["interests", "goals", "past_activities", "achievements", "challenges"]);
 
 /**
  * Skill Signal from the Skill Snapshot

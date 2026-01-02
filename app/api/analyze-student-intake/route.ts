@@ -53,6 +53,19 @@ const InterestCategoriesSchema = z.object({
 });
 
 /**
+ * Skills Self-Assessment Schema
+ * Matches the UI's skill self-rating sliders (0-5 scale)
+ */
+const SkillsSelfAssessmentSchema = z.object({
+  problemSolving: z.number().min(0).max(5),
+  communication: z.number().min(0).max(5),
+  technicalSkills: z.number().min(0).max(5),
+  creativity: z.number().min(0).max(5),
+  leadership: z.number().min(0).max(5),
+  selfManagement: z.number().min(0).max(5),
+});
+
+/**
  * Input Schema: Validates the incoming request body
  * 
  * This schema exactly matches the data collected from the UI intake form.
@@ -80,13 +93,17 @@ const InputSchema = z.object({
   // Experience (these are the fields the AI will analyze)
   past_activities: z.string().min(1, "Past activities description is required"),
   past_achievements: z.string().optional(),
+  
+  // Self-Assessment (optional - used for display/comparison, not AI analysis)
+  challenges: z.string().optional(),
+  skills: SkillsSelfAssessmentSchema.optional(),
 });
 
 /**
  * Valid sources for evidence provenance
  * These map to the free-text sections in the intake form
  */
-const EvidenceSourceSchema = z.enum(["interests", "goals", "past_activities", "achievements"]);
+const EvidenceSourceSchema = z.enum(["interests", "goals", "past_activities", "achievements", "challenges"]);
 
 /**
  * Skill Signal Schema
@@ -201,6 +218,7 @@ The input text is labeled with sections. Track which sections your evidence come
 - "goals" - from the GOALS section  
 - "past_activities" - from the PAST ACTIVITIES section
 - "achievements" - from the ACHIEVEMENTS section
+- "challenges" - from the CHALLENGES/AREAS TO IMPROVE section (shows self-awareness)
 
 GOAL-AWARE SKILL ANALYSIS:
 **IMPORTANT**: The student's stated goals provide critical context for skill evaluation.
@@ -283,7 +301,7 @@ OUTPUT FORMAT (strict JSON only):
 
 EVIDENCE SOURCES RULES:
 - evidence_sources MUST only contain sections where evidence was actually found
-- Valid values: "interests", "goals", "past_activities", "achievements"
+- Valid values: "interests", "goals", "past_activities", "achievements", "challenges"
 - If no evidence found, evidence_sources must be an empty array []
 - Do NOT include a source unless at least one evidence_phrase came from that section
 
@@ -342,6 +360,10 @@ function buildUserPrompt(data: InputData): string {
   
   if (data.past_achievements?.trim()) {
     textSections.push(`ACHIEVEMENTS: ${data.past_achievements}`);
+  }
+
+  if (data.challenges?.trim()) {
+    textSections.push(`CHALLENGES/AREAS TO IMPROVE: ${data.challenges}`);
   }
   
   const combinedText = textSections.join("\n\n");

@@ -31,6 +31,15 @@ interface StudentProfile {
   learning_preferences: string[];
   past_activities: string;
   past_achievements: string;
+  challenges: string;
+  skills: {
+    problemSolving: number;
+    communication: number;
+    technicalSkills: number;
+    creativity: number;
+    leadership: number;
+    selfManagement: number;
+  };
 }
 
 interface SkillSignal {
@@ -204,7 +213,41 @@ const VALID_SKILLS = [
 ];
 
 // Valid evidence sources
-const VALID_SOURCES = ["interests", "goals", "past_activities", "achievements"];
+const VALID_SOURCES = ["interests", "goals", "past_activities", "achievements", "challenges"];
+
+// Goal options (matching the assessment form)
+const GOAL_OPTIONS = [
+  { id: "college", label: "College Prep", icon: "🎓" },
+  { id: "coding", label: "Coding & Tech", icon: "💻" },
+  { id: "publicSpeaking", label: "Public Speaking", icon: "🎤" },
+  { id: "leadership", label: "Leadership", icon: "👑" },
+  { id: "creativity", label: "Creativity & Arts", icon: "🎨" },
+  { id: "entrepreneurship", label: "Entrepreneurship", icon: "🚀" },
+  { id: "stem", label: "STEM Skills", icon: "🔬" },
+  { id: "writing", label: "Writing", icon: "✍️" },
+  { id: "networking", label: "Networking", icon: "🤝" },
+  { id: "career", label: "Career Exploration", icon: "💼" },
+];
+
+// Learning modes (matching the assessment form)
+const LEARNING_MODES = [
+  { id: "video", label: "Video Tutorials", icon: "🎬", description: "YouTube, online courses" },
+  { id: "reading", label: "Reading", icon: "📚", description: "Articles, books, documentation" },
+  { id: "handson", label: "Hands-on Projects", icon: "🛠️", description: "Learning by building" },
+  { id: "group", label: "Group Work", icon: "👥", description: "Study groups, team projects" },
+  { id: "mentor", label: "Mentorship", icon: "🎓", description: "1-on-1 guidance" },
+  { id: "interactive", label: "Interactive", icon: "🎮", description: "Quizzes, games, challenges" },
+];
+
+// Skill labels for self-assessment
+const SKILL_LABELS = [
+  { key: "problemSolving", label: "Problem Solving", description: "Ability to analyze issues and find solutions" },
+  { key: "communication", label: "Communication", description: "Written and verbal expression skills" },
+  { key: "technicalSkills", label: "Technical Skills", description: "Computer, coding, or technical abilities" },
+  { key: "creativity", label: "Creativity", description: "Innovative thinking and artistic expression" },
+  { key: "leadership", label: "Leadership", description: "Ability to guide and motivate others" },
+  { key: "selfManagement", label: "Self-Management", description: "Time management and self-discipline" },
+];
 
 // Default empty profile
 const DEFAULT_PROFILE: StudentProfile = {
@@ -227,6 +270,15 @@ const DEFAULT_PROFILE: StudentProfile = {
   learning_preferences: [],
   past_activities: "",
   past_achievements: "",
+  challenges: "",
+  skills: {
+    problemSolving: 0,
+    communication: 0,
+    technicalSkills: 0,
+    creativity: 0,
+    leadership: 0,
+    selfManagement: 0,
+  },
 };
 
 // Sample test profiles for quick testing
@@ -253,6 +305,15 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
       learning_preferences: ["handson", "video"],
       past_activities: "I built a weather app using Python and APIs. I also led my school's robotics club and helped debug code for our competition robot.",
       past_achievements: "Won 2nd place at regional hackathon. Got state award for robotics.",
+      challenges: "I struggle with communicating technical concepts to non-technical people. I also need to improve my time management when working on multiple projects.",
+      skills: {
+        problemSolving: 4,
+        communication: 2,
+        technicalSkills: 4,
+        creativity: 3,
+        leadership: 3,
+        selfManagement: 2,
+      },
     },
   },
   {
@@ -277,6 +338,15 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
       learning_preferences: ["group", "mentor"],
       past_activities: "I organized a charity fundraiser that raised $5000. I mentored younger students in debate club and led weekly practice sessions.",
       past_achievements: "Won best speaker at state debate competition. Elected class representative for 3 years.",
+      challenges: "I sometimes take on too many responsibilities at once. I need to work on delegating tasks to others and saying no when I'm overwhelmed.",
+      skills: {
+        problemSolving: 3,
+        communication: 5,
+        technicalSkills: 1,
+        creativity: 2,
+        leadership: 5,
+        selfManagement: 3,
+      },
     },
   },
   {
@@ -301,6 +371,15 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
       learning_preferences: ["handson", "video"],
       past_activities: "I designed the school yearbook cover and created promotional posters for school events. I also compose music in my free time.",
       past_achievements: "Won the school art competition. My short story was published in the school magazine.",
+      challenges: "I have trouble finishing projects once the initial excitement wears off. I also struggle with promoting my own work and putting myself out there.",
+      skills: {
+        problemSolving: 2,
+        communication: 3,
+        technicalSkills: 2,
+        creativity: 5,
+        leadership: 1,
+        selfManagement: 2,
+      },
     },
   },
   {
@@ -325,6 +404,15 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
       learning_preferences: ["video"],
       past_activities: "I sometimes help my friends with homework.",
       past_achievements: "",
+      challenges: "I'm not sure what I want to do yet. I find it hard to stay motivated for schoolwork.",
+      skills: {
+        problemSolving: 1,
+        communication: 2,
+        technicalSkills: 1,
+        creativity: 1,
+        leadership: 0,
+        selfManagement: 1,
+      },
     },
   },
   {
@@ -343,12 +431,21 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
         health_wellness: true,
         other: false,
       },
-      goals_selected: ["leadership", "health", "college"],
+      goals_selected: ["leadership", "career", "college"],
       goals_free_text: "I want to get a basketball scholarship and eventually become a sports coach or physical therapist.",
       time_availability_hours_per_week: 6,
       learning_preferences: ["handson", "video", "mentor"],
       past_activities: "I'm the captain of the varsity basketball team. I organized summer training camps for younger players. I also volunteer at the community gym teaching basic fitness.",
       past_achievements: "Team MVP for 2 consecutive years. Led the team to regional championships. Certified in basic first aid and CPR.",
+      challenges: "Balancing academics with sports practice is tough. I also get nervous during high-pressure games and need to work on mental toughness.",
+      skills: {
+        problemSolving: 3,
+        communication: 4,
+        technicalSkills: 1,
+        creativity: 2,
+        leadership: 5,
+        selfManagement: 4,
+      },
     },
   },
   {
@@ -367,12 +464,21 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
         health_wellness: false,
         other: false,
       },
-      goals_selected: ["entrepreneurship", "business", "networking", "leadership"],
+      goals_selected: ["entrepreneurship", "networking", "leadership"],
       goals_free_text: "I want to start my own company before graduating college. Interested in e-commerce and digital marketing.",
       time_availability_hours_per_week: 12,
       learning_preferences: ["handson", "mentor", "reading"],
       past_activities: "Started a sneaker reselling business that made $3000 in profit. Managed social media for a local small business. Created a business club at school and organized guest speaker events.",
       past_achievements: "Won the school's young entrepreneur competition. Featured in local newspaper for my business. Grew Instagram account to 5000 followers for a client.",
+      challenges: "I struggle with long-term planning and sometimes get distracted by new business ideas. I also need to improve my accounting and financial management skills.",
+      skills: {
+        problemSolving: 4,
+        communication: 4,
+        technicalSkills: 3,
+        creativity: 4,
+        leadership: 4,
+        selfManagement: 3,
+      },
     },
   },
   {
@@ -391,12 +497,21 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
         health_wellness: true,
         other: false,
       },
-      goals_selected: ["stem", "research", "college"],
+      goals_selected: ["stem", "college", "career"],
       goals_free_text: "I want to become a research scientist, possibly in biotechnology or environmental science. PhD is my long-term goal.",
       time_availability_hours_per_week: 10,
       learning_preferences: ["reading", "handson", "mentor"],
       past_activities: "Conducted an independent research project on water quality in local streams. Participated in a summer research internship at a university lab. Member of Science Olympiad team focusing on biology events.",
       past_achievements: "Won 1st place in regional science fair. Published research summary in student science journal. Gold medal in Science Olympiad state competition.",
+      challenges: "I tend to get too focused on details and lose sight of the bigger picture. I also find it hard to explain complex scientific concepts to people without a science background.",
+      skills: {
+        problemSolving: 5,
+        communication: 2,
+        technicalSkills: 4,
+        creativity: 3,
+        leadership: 2,
+        selfManagement: 4,
+      },
     },
   },
   {
@@ -421,6 +536,15 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
       learning_preferences: ["handson", "group", "mentor"],
       past_activities: "Lead roles in 3 school musicals. Took voice lessons for 5 years. Choreographed a dance routine for the school talent show. Participated in community theater productions.",
       past_achievements: "Best Actor award at regional theater festival. Selected for all-state choir. My dance performance went viral on TikTok with 100k views.",
+      challenges: "I deal with stage fright before big performances. I also struggle with rejection after auditions and need to build more resilience.",
+      skills: {
+        problemSolving: 2,
+        communication: 5,
+        technicalSkills: 1,
+        creativity: 5,
+        leadership: 3,
+        selfManagement: 3,
+      },
     },
   },
   {
@@ -439,12 +563,21 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
         health_wellness: true,
         other: false,
       },
-      goals_selected: ["health", "college", "leadership"],
+      goals_selected: ["career", "college", "leadership"],
       goals_free_text: "I want to become a doctor, specifically a pediatrician or surgeon. Pre-med track in college is my plan.",
       time_availability_hours_per_week: 7,
       learning_preferences: ["reading", "handson", "mentor"],
       past_activities: "Volunteered 200+ hours at local hospital. Shadowed doctors in ER and pediatrics. Led the health awareness club and organized blood drives. Certified EMT.",
       past_achievements: "Received hospital volunteer of the year award. CPR and EMT certifications. 4.0 GPA in all science courses.",
+      challenges: "I struggle with maintaining work-life balance while preparing for medical school. I also find it emotionally difficult when patients have bad outcomes.",
+      skills: {
+        problemSolving: 4,
+        communication: 4,
+        technicalSkills: 3,
+        creativity: 2,
+        leadership: 4,
+        selfManagement: 4,
+      },
     },
   },
   {
@@ -469,6 +602,15 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
       learning_preferences: ["video", "handson", "group"],
       past_activities: "Rank top 500 in Valorant. Started a Twitch stream with 200 followers. Captain of school esports team. Learning Unity game development in free time. Organized school gaming tournaments.",
       past_achievements: "Won regional esports tournament. Reached Diamond rank in multiple competitive games. Built a small game prototype in Unity.",
+      challenges: "I sometimes game too much and neglect homework. I also need to work on not getting tilted when I lose and managing my competitive frustration.",
+      skills: {
+        problemSolving: 4,
+        communication: 3,
+        technicalSkills: 3,
+        creativity: 3,
+        leadership: 3,
+        selfManagement: 2,
+      },
     },
   },
   {
@@ -487,12 +629,21 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
         health_wellness: true,
         other: true,
       },
-      goals_selected: ["leadership", "research", "networking"],
+      goals_selected: ["leadership", "career", "networking"],
       goals_free_text: "I want to work in environmental policy or become a climate scientist. Making a real impact on climate change is my mission.",
       time_availability_hours_per_week: 9,
       learning_preferences: ["reading", "group", "handson"],
       past_activities: "Founded the school's environmental club. Organized a school-wide recycling program that diverted 500 lbs of waste. Led a community tree planting initiative. Attended climate march in Washington DC.",
       past_achievements: "Recognized by city council for environmental leadership. Club grew from 5 to 50 members. Secured grant funding for school garden project.",
+      challenges: "I sometimes feel overwhelmed by the scale of environmental problems. I also need to learn to work better with people who don't share my urgency about climate issues.",
+      skills: {
+        problemSolving: 4,
+        communication: 4,
+        technicalSkills: 2,
+        creativity: 3,
+        leadership: 5,
+        selfManagement: 4,
+      },
     },
   },
   {
@@ -517,6 +668,15 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
       learning_preferences: ["video", "handson", "mentor"],
       past_activities: "Produced over 50 original tracks. DJ'd at school dances and local events. Released music on Spotify and SoundCloud. Collaborated with other artists online. Learning music theory and piano.",
       past_achievements: "Got 10,000 streams on Spotify. Paid gigs as DJ at 5 events. Won school talent show with original song. Featured on a music blog.",
+      challenges: "I struggle with music theory and reading sheet music. I also find it hard to get consistent feedback on my tracks and grow my audience.",
+      skills: {
+        problemSolving: 3,
+        communication: 3,
+        technicalSkills: 4,
+        creativity: 5,
+        leadership: 2,
+        selfManagement: 3,
+      },
     },
   },
   {
@@ -541,6 +701,15 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
       learning_preferences: ["reading", "video", "mentor"],
       past_activities: "Fluent in English and Spanish. Intermediate Japanese and beginner Mandarin. Pen pals with students from 5 different countries. Volunteer translator for community events. Host international exchange students.",
       past_achievements: "AP Spanish score of 5. Won Model UN best delegate award. Completed Japanese N3 certification. Published article in school's multicultural magazine.",
+      challenges: "I spread myself too thin trying to learn multiple languages at once. I also struggle with speaking confidently in languages I'm still learning.",
+      skills: {
+        problemSolving: 3,
+        communication: 4,
+        technicalSkills: 2,
+        creativity: 3,
+        leadership: 3,
+        selfManagement: 3,
+      },
     },
   },
   {
@@ -559,12 +728,21 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
         health_wellness: false,
         other: false,
       },
-      goals_selected: ["stem", "college", "research"],
+      goals_selected: ["stem", "college", "career"],
       goals_free_text: "I want to study pure mathematics or theoretical physics at a top university. Research in academia is my goal.",
       time_availability_hours_per_week: 15,
       learning_preferences: ["reading", "mentor", "handson"],
       past_activities: "Member of Math Olympiad team for 4 years. Self-studied calculus and linear algebra. Tutored peers in advanced math. Attended summer math programs at universities. Solved 500+ competition problems.",
       past_achievements: "AIME qualifier for 2 years. State Math League champion. Perfect score on AMC 12. Accepted to prestigious summer math camp.",
+      challenges: "I sometimes get too absorbed in math and neglect other subjects. I also find group projects difficult because I prefer working alone.",
+      skills: {
+        problemSolving: 5,
+        communication: 2,
+        technicalSkills: 4,
+        creativity: 4,
+        leadership: 1,
+        selfManagement: 4,
+      },
     },
   },
   {
@@ -589,6 +767,15 @@ const SAMPLE_PROFILES: { name: string; profile: StudentProfile }[] = [
       learning_preferences: ["reading", "group", "mentor"],
       past_activities: "Founded school's diversity and inclusion club. Organized voter registration drives. Spoke at city council meetings about youth issues. Interned at local ACLU chapter. Write opinion pieces for school newspaper.",
       past_achievements: "MLK Jr. service award recipient. Registered 100+ new voters. Published op-ed in local newspaper. Selected as youth representative for county equity committee.",
+      challenges: "I sometimes get frustrated when progress is slow or when people disagree with me. I need to work on staying patient and finding common ground with others.",
+      skills: {
+        problemSolving: 4,
+        communication: 5,
+        technicalSkills: 1,
+        creativity: 3,
+        leadership: 5,
+        selfManagement: 4,
+      },
     },
   },
 ];
@@ -1263,7 +1450,7 @@ export default function TestingPlaygroundPage() {
                 <h3 className="font-semibold text-gray-900 mb-3">
                   📋 Sample Test Profiles
                 </h3>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-[600px] overflow-y-auto">
                   {SAMPLE_PROFILES.map((sample, idx) => (
                     <button
                       key={idx}
@@ -1275,7 +1462,8 @@ export default function TestingPlaygroundPage() {
                       </span>
                       <span className="block text-xs text-gray-500">
                         Grade {sample.profile.grade} •{" "}
-                        {sample.profile.goals_selected.length} goals
+                        {sample.profile.goals_selected.length} goals •{" "}
+                        {sample.profile.learning_preferences.length} learning modes
                       </span>
                     </button>
                   ))}
@@ -1457,6 +1645,41 @@ export default function TestingPlaygroundPage() {
                       </div>
                     </div>
 
+                    {/* Goals Selected */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Goals Selected
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {GOAL_OPTIONS.map((goal) => (
+                          <label
+                            key={goal.id}
+                            className={`px-3 py-2 rounded-lg text-sm cursor-pointer transition-all flex items-center gap-2 ${
+                              profile.goals_selected.includes(goal.id)
+                                ? "bg-indigo-100 text-indigo-700 border-2 border-indigo-400"
+                                : "bg-gray-50 text-gray-600 border-2 border-transparent hover:border-gray-300"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="sr-only"
+                              checked={profile.goals_selected.includes(goal.id)}
+                              onChange={(e) =>
+                                setProfile((p) => ({
+                                  ...p,
+                                  goals_selected: e.target.checked
+                                    ? [...p.goals_selected, goal.id]
+                                    : p.goals_selected.filter((g) => g !== goal.id),
+                                }))
+                              }
+                            />
+                            <span>{goal.icon}</span>
+                            <span>{goal.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Goals */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1498,6 +1721,44 @@ export default function TestingPlaygroundPage() {
                       />
                     </div>
 
+                    {/* Learning Preferences */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Learning Preferences
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {LEARNING_MODES.map((mode) => (
+                          <label
+                            key={mode.id}
+                            className={`px-3 py-2 rounded-lg text-sm cursor-pointer transition-all ${
+                              profile.learning_preferences.includes(mode.id)
+                                ? "bg-emerald-100 text-emerald-700 border-2 border-emerald-400"
+                                : "bg-gray-50 text-gray-600 border-2 border-transparent hover:border-gray-300"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="sr-only"
+                              checked={profile.learning_preferences.includes(mode.id)}
+                              onChange={(e) =>
+                                setProfile((p) => ({
+                                  ...p,
+                                  learning_preferences: e.target.checked
+                                    ? [...p.learning_preferences, mode.id]
+                                    : p.learning_preferences.filter((l) => l !== mode.id),
+                                }))
+                              }
+                            />
+                            <div className="flex items-center gap-2">
+                              <span>{mode.icon}</span>
+                              <span className="font-medium">{mode.label}</span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">{mode.description}</p>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Past Activities */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1534,6 +1795,65 @@ export default function TestingPlaygroundPage() {
                         rows={2}
                         placeholder="Awards, recognitions, accomplishments..."
                       />
+                    </div>
+
+                    {/* Challenges */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Challenges or Areas to Improve
+                      </label>
+                      <textarea
+                        value={profile.challenges}
+                        onChange={(e) =>
+                          setProfile((p) => ({
+                            ...p,
+                            challenges: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        rows={2}
+                        placeholder="Weaknesses or areas where you'd like to improve..."
+                      />
+                    </div>
+
+                    {/* Skills Self-Assessment */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-3">
+                        Skills Self-Assessment (0-5)
+                      </label>
+                      <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+                        {SKILL_LABELS.map((skill) => (
+                          <div key={skill.key}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium text-gray-700">{skill.label}</span>
+                              <span className="text-sm text-indigo-600 font-bold">
+                                {profile.skills[skill.key as keyof typeof profile.skills]}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 mb-2">{skill.description}</p>
+                            <input
+                              type="range"
+                              min={0}
+                              max={5}
+                              value={profile.skills[skill.key as keyof typeof profile.skills]}
+                              onChange={(e) =>
+                                setProfile((p) => ({
+                                  ...p,
+                                  skills: {
+                                    ...p.skills,
+                                    [skill.key]: parseInt(e.target.value),
+                                  },
+                                }))
+                              }
+                              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                            />
+                            <div className="flex justify-between text-xs text-gray-400 mt-1">
+                              <span>Beginner</span>
+                              <span>Expert</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
