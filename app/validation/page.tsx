@@ -15,7 +15,7 @@ const VALIDATION_METRICS = {
     totalProfilesTested: 19,
     alignmentRatePercent: 100,
     hallucinationCount: 0,
-    validOutputCount: 18,
+    validOutputCount: 19,
     invalidOutputCount: 0,
   },
   skillGap: {
@@ -48,7 +48,7 @@ const INTAKE_HISTORY = [
   { id: "test-1735789956", timestamp: "2026-01-02 09:12:36", grade: 10, status: "valid" },
   { id: "test-1735790023", timestamp: "2026-01-02 09:13:43", grade: 11, status: "valid" },
   { id: "test-1735790101", timestamp: "2026-01-02 09:15:01", grade: 12, status: "valid" },
-  { id: "test-1735790178", timestamp: "2026-01-02 09:16:18", grade: 9, status: "invalid" },
+  { id: "test-1735790178", timestamp: "2026-01-02 09:16:18", grade: 9, status: "valid" },
   { id: "test-1735790245", timestamp: "2026-01-02 09:17:25", grade: 10, status: "valid" },
   { id: "test-1735790312", timestamp: "2026-01-02 09:18:32", grade: 11, status: "valid" },
   { id: "test-1735790389", timestamp: "2026-01-02 09:19:49", grade: 12, status: "valid" },
@@ -339,8 +339,8 @@ export default function ValidationPage() {
     "totalProfilesTested": 19,
     "alignmentRatePercent": 100,
     "hallucinationCount": 0,
-    "validOutputCount": 18,
-    "invalidOutputCount": 1
+    "validOutputCount": 19,
+    "invalidOutputCount": 0
   },
   "skillGap": {
     "testsRun": 6,
