@@ -31,6 +31,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OpenAI } from "openai";
 import { z } from "zod";
+import {
+  applyInferredEvidenceRules,
+  createAttributionSummary,
+  type EvidenceAttributionType,
+  type EnhancedSkillSignal,
+} from "../lib/responsible-ai";
 
 // =============================================================================
 // SECTION 1: SCHEMA DEFINITIONS
@@ -134,6 +140,16 @@ const SkillSignalSchema = z.object({
 });
 
 /**
+ * Enhanced Skill Signal Schema with attribution type
+ * Added for responsible AI transparency
+ */
+const EnhancedSkillSignalSchema = SkillSignalSchema.extend({
+  attribution_type: z.enum(["explicit", "inferred", "missing"]),
+  inference_sources: z.array(z.string()).optional(),
+  inference_justification: z.string().optional(),
+});
+
+/**
  * AI Response Schema: The exact structure the AI must return
  * 
  * WHY SCHEMA VALIDATION IS CRITICAL:
@@ -152,10 +168,24 @@ const AIResponseSchema = z.object({
   self_management: SkillSignalSchema,
 });
 
+/**
+ * Enhanced AI Response Schema with attribution types
+ */
+const EnhancedAIResponseSchema = z.object({
+  problem_solving: EnhancedSkillSignalSchema,
+  communication: EnhancedSkillSignalSchema,
+  technical_skills: EnhancedSkillSignalSchema,
+  creativity: EnhancedSkillSignalSchema,
+  leadership: EnhancedSkillSignalSchema,
+  self_management: EnhancedSkillSignalSchema,
+});
+
 // Type exports for use in other parts of the application
 export type InputData = z.infer<typeof InputSchema>;
 export type SkillSignal = z.infer<typeof SkillSignalSchema>;
+export type EnhancedSkillSignalType = z.infer<typeof EnhancedSkillSignalSchema>;
 export type AIResponse = z.infer<typeof AIResponseSchema>;
+export type EnhancedAIResponse = z.infer<typeof EnhancedAIResponseSchema>;
 
 // =============================================================================
 // SECTION 2: HUGGING FACE CLIENT INITIALIZATION
@@ -626,14 +656,45 @@ export async function POST(request: NextRequest) {
     }
     
     // =========================================================================
-    // STEP 6: Return validated results
+    // STEP 6: Apply Responsible AI Enhancements
+    // - Inferred evidence detection for Problem Solving
+    // - Evidence attribution types (explicit/inferred/missing)
+    // =========================================================================
+    
+    // Combine all text sections for inference detection
+    const combinedText = [
+      inputData.interests_free_text,
+      inputData.goals_free_text || "",
+      inputData.past_activities,
+      inputData.past_achievements || "",
+      inputData.challenges || ""
+    ].join(" ");
+    
+    // Apply inferred evidence rules to enhance skill signals
+    const enhancedSkillSignals = applyInferredEvidenceRules(
+      validatedResponse as Record<string, {
+        evidence_found: boolean;
+        evidence_phrases: string[];
+        evidence_sources: string[];
+        confidence: number;
+        reasoning: string;
+      }>,
+      combinedText
+    );
+    
+    // Create attribution summary for transparency
+    const attributionSummary = createAttributionSummary(enhancedSkillSignals);
+    
+    // =========================================================================
+    // STEP 7: Return validated and enhanced results
     // =========================================================================
     return NextResponse.json({
       success: true,
-      confidence_note: "Confidence reflects clarity and specificity of textual evidence, not student ability or potential.",
+      confidence_note: "Confidence reflects clarity and specificity of textual evidence, not student ability or potential. Some skills may be marked as 'inferred' when derived from related activities.",
       data: {
-        skill_signals: validatedResponse,
+        skill_signals: enhancedSkillSignals,
         summary: createAnalysisSummary(validatedResponse),
+        attribution_summary: attributionSummary,
       },
       meta: {
         grade: inputData.grade,
@@ -641,7 +702,7 @@ export async function POST(request: NextRequest) {
         time_availability: inputData.time_availability_hours_per_week,
         analyzed_at: new Date().toISOString(),
         model: AI_MODEL,
-        api_version: "1.1",
+        api_version: "1.2", // Updated version for responsible AI enhancements
       },
     });
     

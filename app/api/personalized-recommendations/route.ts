@@ -13,6 +13,7 @@
  * 3. Expected skill improvements for each recommendation
  * 4. AI reasoning for transparency
  * 5. Time-compatible filtering based on student availability
+ * 6. Recommendation freshness validation (no discontinued programs)
  *
  * =============================================================================
  */
@@ -20,6 +21,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { z } from "zod";
+import {
+  processRecommendationsForFreshness,
+  validateNoOutdatedRecommendations,
+  type RecommendationValidation,
+} from "../lib/responsible-ai";
 
 // =============================================================================
 // SECTION 1: SCHEMA DEFINITIONS
@@ -397,13 +403,17 @@ function getMatchLevel(score: number): "high" | "medium" | "low" {
 }
 
 /**
- * Post-process recommendations to add match levels and filter by time
+ * Post-process recommendations to add match levels, filter by time, and validate freshness
  */
 function postProcessRecommendations(
   response: AIResponse,
   availableHours: number
 ): AIResponse & {
   match_levels: { high: string; medium: string; low: string };
+  freshness_validation: {
+    all_active: boolean;
+    replacements: RecommendationValidation[];
+  };
 } {
   // Calculate approximate weekly hours for each recommendation type
   const weeklyHoursEstimate = {
@@ -411,6 +421,25 @@ function postProcessRecommendations(
     project: 4,
     competition: 2,
   };
+
+  // Validate and process recommendations for freshness (no discontinued programs)
+  const courseFreshness = processRecommendationsForFreshness(response.courses);
+  const projectFreshness = processRecommendationsForFreshness(response.projects);
+  const competitionFreshness = processRecommendationsForFreshness(response.competitions);
+  
+  // Collect all replacement logs for audit
+  const allReplacements = [
+    ...courseFreshness.replacements,
+    ...projectFreshness.replacements,
+    ...competitionFreshness.replacements,
+  ];
+  
+  // Log replacements for debugging/audit
+  if (allReplacements.length > 0) {
+    console.log("[personalized-recommendations] Outdated programs replaced:", 
+      allReplacements.map(r => r.replacement_log?.original_title).filter(Boolean)
+    );
+  }
 
   // Add match levels to all recommendations
   const addMatchLevel = <T extends { match_score: number }>(items: T[]) =>
@@ -420,15 +449,19 @@ function postProcessRecommendations(
     }));
 
   return {
-    courses: addMatchLevel(response.courses),
-    projects: addMatchLevel(response.projects),
-    competitions: addMatchLevel(response.competitions),
+    courses: addMatchLevel(courseFreshness.processed),
+    projects: addMatchLevel(projectFreshness.processed),
+    competitions: addMatchLevel(competitionFreshness.processed),
     summary: response.summary,
     match_levels: {
       high: "85%+" as const,
       medium: "70-84%" as const,
       low: "<70%" as const,
     } as { high: string; medium: string; low: string },
+    freshness_validation: {
+      all_active: allReplacements.length === 0,
+      replacements: allReplacements,
+    },
   };
 }
 
@@ -521,7 +554,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Post-process to add match levels
+    // Post-process to add match levels and validate freshness
     const processedResponse = postProcessRecommendations(
       validatedResponse,
       student_profile.time_availability_hours_per_week
@@ -539,9 +572,11 @@ export async function POST(request: NextRequest) {
           processedResponse.courses.length +
           processedResponse.projects.length +
           processedResponse.competitions.length,
+        all_recommendations_active: processedResponse.freshness_validation.all_active,
+        replacements_made: processedResponse.freshness_validation.replacements.length,
         analyzed_at: new Date().toISOString(),
         model: AI_MODEL,
-        api_version: "1.0",
+        api_version: "1.1", // Updated for freshness validation
       },
     });
   } catch (error) {

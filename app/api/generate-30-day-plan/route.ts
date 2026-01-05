@@ -33,6 +33,7 @@
  * 4. Input validation - malformed requests are rejected
  * 5. Output validation - AI responses are schema-validated before returning
  * 6. No motivational fluff - strictly functional, evidence-based output
+ * 7. Growth caps enforced - max +25% improvement per skill in 30 days
  *
  * =============================================================================
  */
@@ -40,6 +41,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { z } from "zod";
+import {
+  applyGrowthCapsToPlanTasks,
+  MAX_30_DAY_IMPROVEMENT,
+} from "../lib/responsible-ai";
 
 // =============================================================================
 // SECTION 1: INPUT SCHEMA DEFINITIONS
@@ -191,11 +196,12 @@ CRITICAL RULES:
    - Week 4: Integration & Real-World Application - High difficulty, synthesis tasks
 
 3. CONSTRAINTS:
-   - Maximum 5 tasks per week (fewer if justified)
+   - Maximum 3-4 tasks per week (prefer fewer, focused tasks)
    - Total weekly hours MUST NOT exceed time_availability_hours_per_week
    - Ignore skill gaps with gap_percentage < 15%
    - Escalate difficulty progressively across weeks
    - No filler tasks - every task must have clear skill impact
+   - Keep descriptions and reasoning BRIEF (1-2 sentences max)
 
 4. TASK DIFFICULTY GUIDELINES:
    - low: 1-2 hours, foundational, single-skill focus
@@ -352,7 +358,7 @@ async function callAI(userPrompt: string): Promise<string> {
       { role: "user", content: userPrompt },
     ],
     temperature: 0.2,
-    max_tokens: 4096,
+    max_tokens: 8192,
   });
 
   const content = completion.choices[0]?.message?.content;
@@ -360,6 +366,122 @@ async function callAI(userPrompt: string): Promise<string> {
     throw new Error("AI returned empty response");
   }
   return content;
+}
+
+/**
+ * Normalize AI response to fix common issues before validation
+ * - Converts difficulty values to lowercase
+ * - Fixes common AI output variations
+ * - Maps alternative difficulty names to valid values
+ */
+function normalizeAIResponse(parsed: unknown): unknown {
+  if (!parsed || typeof parsed !== 'object') return parsed;
+  
+  const data = parsed as Record<string, unknown>;
+  
+  if (Array.isArray(data.weeks)) {
+    data.weeks = data.weeks.map((week: unknown) => {
+      if (!week || typeof week !== 'object') return week;
+      const w = week as Record<string, unknown>;
+      
+      if (Array.isArray(w.tasks)) {
+        w.tasks = w.tasks.map((task: unknown) => {
+          if (!task || typeof task !== 'object') return task;
+          const t = task as Record<string, unknown>;
+          
+          // Normalize difficulty to valid enum values
+          if (typeof t.difficulty === 'string') {
+            const originalDifficulty = t.difficulty;
+            const diffLower = t.difficulty.toLowerCase().trim();
+            
+            // Map various AI outputs to valid values
+            const difficultyMap: Record<string, string> = {
+              'low': 'low',
+              'easy': 'low',
+              'beginner': 'low',
+              'simple': 'low',
+              'basic': 'low',
+              'medium': 'medium',
+              'moderate': 'medium',
+              'intermediate': 'medium',
+              'mid': 'medium',
+              'average': 'medium',
+              'high': 'high',
+              'hard': 'high',
+              'difficult': 'high',
+              'advanced': 'high',
+              'challenging': 'high',
+              'complex': 'high',
+            };
+            
+            if (difficultyMap[diffLower]) {
+              t.difficulty = difficultyMap[diffLower];
+            } else {
+              // Default fallback based on week number if available
+              const weekNum = typeof w.week_number === 'number' ? w.week_number : 2;
+              let normalizedTo: string;
+              if (weekNum === 1) {
+                normalizedTo = 'low';
+              } else if (weekNum === 4) {
+                normalizedTo = 'high';
+              } else {
+                normalizedTo = 'medium';
+              }
+              t.difficulty = normalizedTo;
+              console.warn(`[generate-30-day-plan] Unknown difficulty "${originalDifficulty}" normalized to "${normalizedTo}"`);
+            }
+          } else if (t.difficulty === undefined || t.difficulty === null) {
+            // Set default difficulty based on week
+            const weekNum = typeof w.week_number === 'number' ? w.week_number : 2;
+            if (weekNum === 1) {
+              t.difficulty = 'low';
+            } else if (weekNum === 4) {
+              t.difficulty = 'high';
+            } else {
+              t.difficulty = 'medium';
+            }
+          }
+          
+          return t;
+        });
+      }
+      
+      return w;
+    });
+  }
+  
+  return data;
+}
+
+/**
+ * Check if JSON response appears to be truncated
+ */
+function isJsonTruncated(text: string): boolean {
+  const cleaned = cleanJsonResponse(text).trim();
+  
+  // Count opening and closing braces/brackets
+  const openBraces = (cleaned.match(/{/g) || []).length;
+  const closeBraces = (cleaned.match(/}/g) || []).length;
+  const openBrackets = (cleaned.match(/\[/g) || []).length;
+  const closeBrackets = (cleaned.match(/\]/g) || []).length;
+  
+  // If braces/brackets don't match, it's likely truncated
+  if (openBraces !== closeBraces || openBrackets !== closeBrackets) {
+    return true;
+  }
+  
+  // Check if it ends with valid JSON terminator
+  if (!cleaned.endsWith('}') && !cleaned.endsWith(']')) {
+    return true;
+  }
+  
+  // Try to parse to be sure
+  try {
+    JSON.parse(cleaned);
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -371,11 +493,21 @@ function validateResponse(rawResponse: string): ActionPlan {
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleanedResponse);
-  } catch {
+  } catch (parseError) {
+    // Provide more specific error for truncated responses
+    const isTruncated = isJsonTruncated(cleanedResponse);
+    if (isTruncated) {
+      throw new Error(
+        `Response was truncated (${cleanedResponse.length} chars). Last 50 chars: "...${cleanedResponse.slice(-50)}"`
+      );
+    }
     throw new Error(
       `Invalid JSON response: ${cleanedResponse.substring(0, 200)}...`
     );
   }
+
+  // Normalize common AI output variations before validation
+  parsed = normalizeAIResponse(parsed);
 
   const result = OutputSchema.safeParse(parsed);
   if (!result.success) {
@@ -415,20 +547,30 @@ function validateResponse(rawResponse: string): ActionPlan {
 }
 
 /**
- * Post-process the plan to ensure consistency
+ * Post-process the plan to ensure consistency and apply growth caps
  */
 function postProcessPlan(
   plan: ActionPlan,
-  timeAvailability: number
-): ActionPlan {
+  timeAvailability: number,
+  skillSnapshot: Record<string, number>
+): ActionPlan & { growth_cap_applied: boolean; growth_cap_note: string } {
+  // Apply growth caps to plan tasks (max +25% per skill across 30 days)
+  const cappedWeeks = applyGrowthCapsToPlanTasks(plan.weeks, skillSnapshot);
+  
+  // Track if any gains were capped
+  let growthCapApplied = false;
+  
   // Recalculate totals for accuracy
   let totalTasks = 0;
   let totalHours = 0;
 
-  for (const week of plan.weeks) {
+  for (const week of cappedWeeks) {
     totalTasks += week.tasks.length;
     for (const task of week.tasks) {
       totalHours += task.estimated_time_hours;
+      if (task.gain_capped) {
+        growthCapApplied = true;
+      }
     }
   }
 
@@ -436,7 +578,12 @@ function postProcessPlan(
   plan.overview.total_tasks = totalTasks;
   plan.overview.estimated_total_hours = Math.round(totalHours * 10) / 10;
 
-  return plan;
+  return {
+    ...plan,
+    weeks: cappedWeeks as ActionPlan["weeks"],
+    growth_cap_applied: growthCapApplied,
+    growth_cap_note: `Skill gains are capped at +${MAX_30_DAY_IMPROVEMENT}% per skill over 30 days. Any projected gains beyond this limit are long-term goals.`,
+  };
 }
 
 // =============================================================================
@@ -524,16 +671,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let rawResponse: string;
-    try {
-      rawResponse = await callAI(userPrompt);
-    } catch (error) {
-      console.error("AI call failed:", error);
+    let rawResponse: string = "";
+    const MAX_RETRIES = 2;
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        rawResponse = await callAI(userPrompt);
+        
+        // Check for truncated response
+        if (isJsonTruncated(rawResponse)) {
+          console.warn(`[generate-30-day-plan] Attempt ${attempt + 1}: Response appears truncated, length: ${rawResponse.length}`);
+          if (attempt < MAX_RETRIES) {
+            console.log(`[generate-30-day-plan] Retrying...`);
+            continue;
+          }
+          throw new Error("AI response was truncated after multiple attempts. The generated plan may be too complex.");
+        }
+        
+        // Response looks complete, break out of retry loop
+        break;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.error(`AI call attempt ${attempt + 1} failed:`, error);
+        
+        if (attempt >= MAX_RETRIES) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "AI service error",
+              details: lastError.message,
+            },
+            { status: 502 }
+          );
+        }
+      }
+    }
+    
+    // TypeScript guard - rawResponse should always be set if we reach here
+    if (!rawResponse) {
       return NextResponse.json(
         {
           success: false,
           error: "AI service error",
-          details: error instanceof Error ? error.message : "Unknown error",
+          details: lastError?.message || "Failed to get response after retries",
         },
         { status: 502 }
       );
@@ -559,10 +740,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Post-process for consistency
+    // Post-process for consistency and apply growth caps
     const processedPlan = postProcessPlan(
       validatedPlan,
-      time_availability_hours_per_week
+      time_availability_hours_per_week,
+      skill_snapshot
     );
 
     // Return successful response
@@ -572,10 +754,12 @@ export async function POST(request: NextRequest) {
       meta: {
         generated_at: new Date().toISOString(),
         model_used: AI_MODEL,
-        api_version: "1.0",
+        api_version: "1.1", // Updated for growth cap enforcement
         significant_gaps_count: significantGaps.length,
         recommendations_considered: Math.min(recommendations.length, 10),
         time_budget_hours: time_availability_hours_per_week * 4,
+        growth_cap_applied: processedPlan.growth_cap_applied,
+        max_30_day_improvement: MAX_30_DAY_IMPROVEMENT,
       },
     });
   } catch (error) {

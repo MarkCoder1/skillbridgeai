@@ -17,6 +17,22 @@ export const VALID_SKILLS = [
 // Valid evidence sources
 export const VALID_SOURCES = ["interests", "goals", "past_activities", "achievements", "challenges"];
 
+// Valid evidence attribution types (for responsible AI)
+export const VALID_ATTRIBUTION_TYPES = ["explicit", "inferred", "missing"];
+
+// Maximum 30-day improvement allowed (responsible AI cap)
+export const MAX_30_DAY_IMPROVEMENT = 25;
+
+// Known discontinued programs (for recommendation validation)
+export const DISCONTINUED_PROGRAMS = [
+  "Google Code-in",
+  "GCI",
+  "Facebook University",
+  "Uber Career Prep",
+  "Twitter University",
+  "Yahoo BOSS API",
+];
+
 // Goal options (matching the assessment form)
 export const GOAL_OPTIONS = [
   { id: "college", label: "College Prep", icon: "🎓" },

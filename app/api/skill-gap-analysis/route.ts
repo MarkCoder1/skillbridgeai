@@ -14,6 +14,9 @@
  * 3. Provides actionable, time-bound improvement steps
  * 4. Aligns skill importance with student goals
  * 5. Includes reasoning for transparency and judge-proofing
+ * 6. Enforces 30-day growth caps (+25% max)
+ * 7. Separates short-term (30-day) vs long-term targets
+ * 8. Includes evidence attribution types (explicit/inferred/missing)
  * 
  * =============================================================================
  */
@@ -21,6 +24,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OpenAI } from "openai";
 import { z } from "zod";
+import {
+  applyGrowthCapsToSkillGaps,
+  MAX_30_DAY_IMPROVEMENT,
+  validateGrowthCaps,
+  type EvidenceAttributionType,
+} from "../lib/responsible-ai";
 
 // =============================================================================
 // SECTION 1: SCHEMA DEFINITIONS
@@ -97,6 +106,17 @@ const SkillGapResultSchema = z.object({
 });
 
 /**
+ * Enhanced Skill Gap Result with short-term/long-term separation
+ * Added for responsible AI calibration
+ */
+const EnhancedSkillGapResultSchema = SkillGapResultSchema.extend({
+  current_score: z.number().min(0).max(100),
+  expected_30_day_score: z.number().min(0).max(100),
+  long_term_target_score: z.number().min(0).max(100),
+  attribution_type: z.enum(["explicit", "inferred", "missing"]),
+});
+
+/**
  * Skill without evidence - needs user input or development
  */
 const SkillWithoutEvidenceSchema = z.object({
@@ -117,17 +137,43 @@ const AIResponseSchema = z.object({
 });
 
 /**
+ * Enhanced AI Response Schema with growth caps and attribution
+ */
+const EnhancedAIResponseSchema = z.object({
+  skill_gaps: z.array(EnhancedSkillGapResultSchema),
+  overall_summary: z.string(),
+  priority_skills: z.array(z.string()),
+  total_weekly_time_recommended: z.string(),
+  growth_cap_note: z.string(),
+});
+
+/**
  * Extended response with skills without evidence (added post-AI)
  */
 interface ExtendedResponse extends AIResponse {
   skills_without_evidence: z.infer<typeof SkillWithoutEvidenceSchema>[];
 }
 
+/**
+ * Enhanced extended response with growth caps
+ */
+interface EnhancedExtendedResponse {
+  skill_gaps: z.infer<typeof EnhancedSkillGapResultSchema>[];
+  overall_summary: string;
+  priority_skills: string[];
+  total_weekly_time_recommended: string;
+  skills_without_evidence: z.infer<typeof SkillWithoutEvidenceSchema>[];
+  growth_cap_note: string;
+  growth_cap_applied: boolean;
+}
+
 // Type exports
 export type SkillSnapshot = z.infer<typeof SkillSnapshotSchema>;
 export type StudentContext = z.infer<typeof StudentContextSchema>;
 export type SkillGapResult = z.infer<typeof SkillGapResultSchema>;
+export type EnhancedSkillGapResult = z.infer<typeof EnhancedSkillGapResultSchema>;
 export type AIResponse = z.infer<typeof AIResponseSchema>;
+export type EnhancedAIResponseType = z.infer<typeof EnhancedAIResponseSchema>;
 
 // =============================================================================
 // SECTION 2: HUGGING FACE CLIENT INITIALIZATION
@@ -827,19 +873,50 @@ export async function POST(request: NextRequest) {
       skills_without_evidence: finalSkillsWithoutEvidence,
     };
 
+    // =========================================================================
+    // Apply Responsible AI Enhancements: Growth Caps
+    // =========================================================================
+    
+    // Apply growth caps to skill gaps (max +25% improvement in 30 days)
+    const enhancedSkillGaps = applyGrowthCapsToSkillGaps(extendedResponse.skill_gaps);
+    
+    // Validate that growth caps are enforced
+    const growthCapValidation = validateGrowthCaps(enhancedSkillGaps);
+    if (!growthCapValidation.valid) {
+      console.warn("Growth cap violations detected (should not happen after applying caps):", growthCapValidation.violations);
+    }
+    
+    // Check if any gaps were capped
+    const growthCapApplied = enhancedSkillGaps.some(gap => 
+      gap.expected_30_day_score !== gap.long_term_target_score
+    );
+    
+    // Build enhanced response with growth cap info
+    const enhancedExtendedResponse: EnhancedExtendedResponse = {
+      skill_gaps: enhancedSkillGaps,
+      overall_summary: extendedResponse.overall_summary,
+      priority_skills: extendedResponse.priority_skills,
+      total_weekly_time_recommended: extendedResponse.total_weekly_time_recommended,
+      skills_without_evidence: finalSkillsWithoutEvidence,
+      growth_cap_note: `Maximum 30-day improvement is capped at +${MAX_30_DAY_IMPROVEMENT}% per skill. Goals beyond this are classified as long-term targets.`,
+      growth_cap_applied: growthCapApplied,
+    };
+
     // Return response
     return NextResponse.json({
       success: true,
-      data: extendedResponse,
+      data: enhancedExtendedResponse,
       meta: {
         student_grade: student_context.grade,
         goals_analyzed: student_context.goals_selected.length,
         time_available: student_context.time_availability_hours_per_week,
         skills_with_evidence: skillsWithEvidence.size,
         skills_without_evidence: skillsWithoutEvidence.length,
+        growth_cap_applied: growthCapApplied,
+        max_30_day_improvement: MAX_30_DAY_IMPROVEMENT,
         analyzed_at: new Date().toISOString(),
         model: AI_MODEL,
-        api_version: "1.1",
+        api_version: "1.2", // Updated for responsible AI enhancements
       },
     });
 

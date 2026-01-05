@@ -63,41 +63,13 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Resources */}
-          <div>
-            <h4 className="font-semibold text-lg mb-4">Resources</h4>
-            <ul className="space-y-2">
-              <li>
-                <span className="text-gray-400 cursor-pointer hover:text-white transition-colors">
-                  For Students
-                </span>
-              </li>
-              <li>
-                <span className="text-gray-400 cursor-pointer hover:text-white transition-colors">
-                  For Parents
-                </span>
-              </li>
-              <li>
-                <span className="text-gray-400 cursor-pointer hover:text-white transition-colors">
-                  For Educators
-                </span>
-              </li>
-            </ul>
-          </div>
+          
         </div>
 
         <div className="border-t border-gray-700 mt-8 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-gray-400 text-sm">
             © {new Date().getFullYear()} SkillBridge AI. All rights reserved.
           </p>
-          <div className="flex gap-6">
-            <span className="text-gray-400 text-sm cursor-pointer hover:text-white transition-colors">
-              Privacy Policy
-            </span>
-            <span className="text-gray-400 text-sm cursor-pointer hover:text-white transition-colors">
-              Terms of Service
-            </span>
-          </div>
         </div>
       </div>
     </footer>

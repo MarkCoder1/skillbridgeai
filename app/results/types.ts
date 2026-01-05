@@ -1,5 +1,6 @@
 // Types for AI Analysis data from sessionStorage
 export type EvidenceSource = "interests" | "goals" | "past_activities" | "achievements";
+export type EvidenceAttributionType = "explicit" | "inferred" | "missing";
 
 export interface SkillSignal {
   evidence_found: boolean;
@@ -7,6 +8,21 @@ export interface SkillSignal {
   evidence_sources: EvidenceSource[];
   confidence: number;
   reasoning: string;
+  // Responsible AI enhancements
+  attribution_type?: EvidenceAttributionType;
+  inference_sources?: string[];
+  inference_justification?: string;
+}
+
+export interface AttributionSummary {
+  explicit_count: number;
+  inferred_count: number;
+  missing_count: number;
+  skills_by_type: {
+    explicit: string[];
+    inferred: string[];
+    missing: string[];
+  };
 }
 
 export interface AIAnalysisData {
@@ -34,6 +50,7 @@ export interface AIAnalysisData {
       self_management: SkillSignal;
     };
     summary: Record<string, boolean>;
+    attribution_summary?: AttributionSummary; // Responsible AI enhancement
   };
   meta: {
     grade: number;
@@ -65,6 +82,11 @@ export interface SkillGapResult {
   why_it_matters: string;
   actionable_steps: ActionStep[];
   reasoning: string;
+  // Responsible AI enhancements
+  current_score?: number;
+  expected_30_day_score?: number;
+  long_term_target_score?: number;
+  attribution_type?: EvidenceAttributionType;
 }
 
 export interface SkillWithoutEvidence {
@@ -80,6 +102,9 @@ export interface SkillGapAnalysis {
   priority_skills: string[];
   total_weekly_time_recommended: string;
   skills_without_evidence: SkillWithoutEvidence[];
+  // Responsible AI enhancements
+  growth_cap_note?: string;
+  growth_cap_applied?: boolean;
 }
 
 // Types for Personalized Recommendations
