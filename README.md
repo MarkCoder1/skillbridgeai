@@ -54,9 +54,3 @@ The system implements several guardrails to ensure accurate and fair outputs:
 - **Website:** https://skillbridgeai.vercel.app
 - **Validation Results:** https://skillbridgeai.vercel.app/validation
 - **Visual Walkthrough:** https://skillbridgeai.vercel.app/validation-walkthrough
-
----
-
-## Source Code
-
-This repository contains the complete implementation of SkillBridge AI. Technical details including API specifications, project structure, and setup instructions are documented in [TECHNICAL_DETAILS.md](./TECHNICAL_DETAILS.md) and [API_REFERENCE.md](./API_REFERENCE.md) for transparency.
