@@ -127,27 +127,6 @@ export default function ValidationPage() {
           </pre>
         </section>
 
-        {/* Important Clarification */}
-        <section className="bg-amber-50 border-2 border-amber-200 rounded-xl p-6 mb-8">
-          <h2 className="text-xl font-semibold text-amber-800 mb-4 flex items-center gap-2">
-            <span>⚠️</span>
-            Explanation of Invalid Outputs
-          </h2>
-          <div className="space-y-3 text-amber-900">
-            <p>
-              The <strong>two invalid Skill Gap Analysis outputs</strong> occurred due to{" "}
-              <strong>API quota limitations</strong> during testing.
-            </p>
-            <p>
-              These invalid results were <strong>not caused by</strong> incorrect reasoning,
-              hallucinations, or unsupported skill extraction.
-            </p>
-            <p className="font-medium">
-              ✓ All valid outputs across stages showed full evidence alignment.
-            </p>
-          </div>
-        </section>
-
         {/* Testing History */}
         <section className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">

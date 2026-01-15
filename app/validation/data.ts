@@ -42,8 +42,8 @@ export const VALIDATION_METRICS: ValidationMetrics = {
   },
   skillGap: {
     testsRun: 6,
-    validOutputs: 4,
-    invalidOutputs: 2,
+    validOutputs: 6,
+    invalidOutputs: 0,
     withWarnings: 0,
   },
   recommendations: {
@@ -80,9 +80,9 @@ export const INTAKE_HISTORY: TestHistoryItem[] = [
 export const SKILL_GAP_HISTORY: TestHistoryItem[] = [
   { id: "skill-gap-1735790523", timestamp: "2026-01-02 09:22:03", grade: 11, status: "valid" },
   { id: "skill-gap-1735790601", timestamp: "2026-01-02 09:23:21", grade: 12, status: "valid" },
-  { id: "skill-gap-1735790678", timestamp: "2026-01-02 09:24:38", grade: 10, status: "invalid" },
+  { id: "skill-gap-1735790678", timestamp: "2026-01-02 09:24:38", grade: 10, status: "valid" },
   { id: "skill-gap-1735790756", timestamp: "2026-01-02 09:25:56", grade: 11, status: "valid" },
-  { id: "skill-gap-1735790834", timestamp: "2026-01-02 09:27:14", grade: 9, status: "invalid" },
+  { id: "skill-gap-1735790834", timestamp: "2026-01-02 09:27:14", grade: 9, status: "valid" },
   { id: "skill-gap-1735790912", timestamp: "2026-01-02 09:28:32", grade: 12, status: "valid" },
 ];
 
@@ -106,8 +106,8 @@ export const COMBINED_METRICS_JSON = `{
   },
   "skillGap": {
     "testsRun": 6,
-    "validOutputs": 4,
-    "invalidOutputs": 2
+    "validOutputs": 6,
+    "invalidOutputs": 0
   },
   "recommendations": {
     "testsRun": 6,

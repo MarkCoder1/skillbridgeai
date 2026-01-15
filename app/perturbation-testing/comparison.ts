@@ -13,7 +13,144 @@ import type {
   ActionPlanResult,
   PerturbationType,
   EvidenceItem,
+  SkillConsistencyResult,
+  PerturbationSummary,
+  PerturbationMetrics,
+  SkillConsistencySummaryRow,
 } from "./types";
+
+// =============================================================================
+// SKILL CONSISTENCY CALCULATION
+// =============================================================================
+
+/**
+ * The 6 core skills measured by the system
+ */
+const CORE_SKILLS = [
+  "problem_solving",
+  "communication",
+  "technical_skills",
+  "creativity",
+  "leadership",
+  "self_management",
+] as const;
+
+type CoreSkill = typeof CORE_SKILLS[number];
+
+/**
+ * Calculate skill consistency between baseline and variant outputs.
+ * 
+ * Skill Consistency Definition:
+ * - Measure percentage similarity between baseline and variant skill scores
+ * - Compute absolute difference per skill (on 0-100 scale)
+ * - Average difference across all 6 skills
+ * - Convert to percentage similarity (100% = identical)
+ * 
+ * @param baselineResults - Original pipeline intake analysis results
+ * @param variantResults - Variant pipeline intake analysis results
+ * @returns SkillConsistencyResult with detailed breakdown
+ */
+export function calculateSkillConsistency(
+  baselineResults: AIAnalysisResult | null,
+  variantResults: AIAnalysisResult | null
+): SkillConsistencyResult {
+  // Default scores if no results
+  const defaultScores: SkillConsistencyResult["baseline_scores"] = {
+    problem_solving: 0,
+    communication: 0,
+    technical_skills: 0,
+    creativity: 0,
+    leadership: 0,
+    self_management: 0,
+  };
+
+  // If no baseline, return 100% consistency (original profile)
+  if (!baselineResults) {
+    const variantScores = variantResults 
+      ? extractSkillScores(variantResults)
+      : { ...defaultScores };
+    
+    return {
+      consistency_percentage: 100,
+      skill_differences: { ...defaultScores },
+      average_difference: 0,
+      baseline_scores: variantScores,
+      variant_scores: variantScores,
+    };
+  }
+
+  // If no variant results, return 0% consistency
+  if (!variantResults) {
+    const baselineScores = extractSkillScores(baselineResults);
+    return {
+      consistency_percentage: 0,
+      skill_differences: {
+        problem_solving: 100,
+        communication: 100,
+        technical_skills: 100,
+        creativity: 100,
+        leadership: 100,
+        self_management: 100,
+      },
+      average_difference: 100,
+      baseline_scores: baselineScores,
+      variant_scores: { ...defaultScores },
+    };
+  }
+
+  // Extract confidence scores (0-1 scale) and convert to 0-100
+  const baselineScores = extractSkillScores(baselineResults);
+  const variantScores = extractSkillScores(variantResults);
+
+  // Calculate absolute differences for each skill
+  const skill_differences: SkillConsistencyResult["skill_differences"] = {
+    problem_solving: 0,
+    communication: 0,
+    technical_skills: 0,
+    creativity: 0,
+    leadership: 0,
+    self_management: 0,
+  };
+
+  let totalDifference = 0;
+
+  for (const skill of CORE_SKILLS) {
+    const baselineScore = baselineScores[skill];
+    const variantScore = variantScores[skill];
+    const difference = Math.abs(variantScore - baselineScore);
+    skill_differences[skill] = Math.round(difference * 10) / 10; // Round to 1 decimal
+    totalDifference += difference;
+  }
+
+  // Calculate average difference
+  const average_difference = Math.round((totalDifference / CORE_SKILLS.length) * 10) / 10;
+
+  // Convert to percentage similarity (100% - average_difference)
+  // Since scores are 0-100, max difference is 100
+  const consistency_percentage = Math.max(0, Math.round(100 - average_difference));
+
+  return {
+    consistency_percentage,
+    skill_differences,
+    average_difference,
+    baseline_scores: baselineScores,
+    variant_scores: variantScores,
+  };
+}
+
+/**
+ * Extract skill confidence scores from AI analysis results and convert to 0-100 scale
+ */
+function extractSkillScores(results: AIAnalysisResult): SkillConsistencyResult["baseline_scores"] {
+  return {
+    problem_solving: Math.round((results.problem_solving?.confidence || 0) * 100),
+    communication: Math.round((results.communication?.confidence || 0) * 100),
+    technical_skills: Math.round((results.technical_skills?.confidence || 0) * 100),
+    creativity: Math.round((results.creativity?.confidence || 0) * 100),
+    leadership: Math.round((results.leadership?.confidence || 0) * 100),
+    self_management: Math.round((results.self_management?.confidence || 0) * 100),
+  };
+}
 
 // =============================================================================
 // SKILL ATTRIBUTION CONSISTENCY
@@ -583,6 +720,12 @@ export function compareVariantToOriginal(
   originalResults: PipelineResults | null,
   variantResults: PipelineResults
 ): VariantComparisonResult {
+  // NEW: Skill consistency calculation
+  const skillConsistency = calculateSkillConsistency(
+    originalResults?.intakeAnalysis || null,
+    variantResults.intakeAnalysis
+  );
+
   // Skill attribution consistency
   const attributionCheck = checkSkillAttributionConsistency(
     variant,
@@ -613,6 +756,7 @@ export function compareVariantToOriginal(
   return {
     profile_id: variant.profileId,
     variant: variant.variantType,
+    skill_consistency: skillConsistency,
     skill_attribution_consistency: attributionCheck.isConsistent ? "consistent" : "inconsistent",
     skill_attribution_details: {
       skillsChanged: attributionCheck.skillsChanged,
@@ -649,18 +793,9 @@ export function compareVariantToOriginal(
  * Calculate summary metrics from comparison results
  */
 export function calculateMetrics(results: VariantComparisonResult[]): {
-  summary: {
-    consistent_attribution_count: number;
-    hallucination_count: number;
-    stable_recommendations_count: number;
-    appropriate_action_plans_count: number;
-  };
-  metrics: {
-    skillAttributionConsistencyRate: number;
-    hallucinationRate: number;
-    recommendationStabilityRate: number;
-    actionPlanAppropriatenessRate: number;
-  };
+  summary: PerturbationSummary;
+  metrics: PerturbationMetrics;
+  skill_consistency_table: SkillConsistencySummaryRow[];
 } {
   const total = results.length;
   
@@ -671,13 +806,27 @@ export function calculateMetrics(results: VariantComparisonResult[]): {
         hallucination_count: 0,
         stable_recommendations_count: 0,
         appropriate_action_plans_count: 0,
+        average_skill_consistency: 0,
+        skill_consistency_by_variant: {
+          rephrased: 0,
+          removed_detail: 0,
+          added_irrelevant: 0,
+        },
       },
       metrics: {
         skillAttributionConsistencyRate: 0,
         hallucinationRate: 0,
         recommendationStabilityRate: 0,
         actionPlanAppropriatenessRate: 0,
+        averageSkillConsistency: 0,
+        skillConsistencyByVariant: {
+          original: 100,
+          rephrased: 0,
+          removal: 0,
+          injection: 0,
+        },
       },
+      skill_consistency_table: [],
     };
   }
 
@@ -686,18 +835,79 @@ export function calculateMetrics(results: VariantComparisonResult[]): {
   const stableCount = results.filter(r => r.recommendation_stability === "stable").length;
   const appropriateCount = results.filter(r => r.action_plan_sensitivity === "appropriate").length;
 
+  // Calculate skill consistency by variant type
+  const originalResults = results.filter(r => r.variant === "original");
+  const rephrasedResults = results.filter(r => r.variant === "rephrased");
+  const removalResults = results.filter(r => r.variant === "removal");
+  const injectionResults = results.filter(r => r.variant === "injection");
+
+  const avgConsistency = (resultSet: VariantComparisonResult[]) => {
+    if (resultSet.length === 0) return 0;
+    const sum = resultSet.reduce((acc, r) => acc + r.skill_consistency.consistency_percentage, 0);
+    return Math.round(sum / resultSet.length);
+  };
+
+  const originalConsistency = avgConsistency(originalResults);
+  const rephrasedConsistency = avgConsistency(rephrasedResults);
+  const removalConsistency = avgConsistency(removalResults);
+  const injectionConsistency = avgConsistency(injectionResults);
+
+  // Overall average (excluding originals since they're always 100%)
+  const variantResults = results.filter(r => r.variant !== "original");
+  const overallAverage = variantResults.length > 0 
+    ? Math.round(variantResults.reduce((acc, r) => acc + r.skill_consistency.consistency_percentage, 0) / variantResults.length)
+    : 100;
+
+  // Build summary table for documentation
+  const skill_consistency_table: SkillConsistencySummaryRow[] = [
+    {
+      input_variant: "Original",
+      skill_consistency: 100,
+      description: "Baseline input (100% by definition)",
+    },
+    {
+      input_variant: "Rephrased Input",
+      skill_consistency: rephrasedConsistency,
+      description: "Same meaning, different wording",
+    },
+    {
+      input_variant: "Removed Detail",
+      skill_consistency: removalConsistency,
+      description: "Key but non-critical info removed",
+    },
+    {
+      input_variant: "Added Irrelevant Text",
+      skill_consistency: injectionConsistency,
+      description: "Noise injection with unrelated content",
+    },
+  ];
+
   return {
     summary: {
       consistent_attribution_count: consistentCount,
       hallucination_count: hallucinationCount,
       stable_recommendations_count: stableCount,
       appropriate_action_plans_count: appropriateCount,
+      average_skill_consistency: overallAverage,
+      skill_consistency_by_variant: {
+        rephrased: rephrasedConsistency,
+        removed_detail: removalConsistency,
+        added_irrelevant: injectionConsistency,
+      },
     },
     metrics: {
       skillAttributionConsistencyRate: Math.round((consistentCount / total) * 100),
       hallucinationRate: Math.round((hallucinationCount / total) * 100),
       recommendationStabilityRate: Math.round((stableCount / total) * 100),
       actionPlanAppropriatenessRate: Math.round((appropriateCount / total) * 100),
+      averageSkillConsistency: overallAverage,
+      skillConsistencyByVariant: {
+        original: originalConsistency || 100,
+        rephrased: rephrasedConsistency,
+        removal: removalConsistency,
+        injection: injectionConsistency,
+      },
     },
+    skill_consistency_table,
   };
 }

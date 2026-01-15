@@ -90,11 +90,50 @@ export interface ActionPlanResult {
 }
 
 /**
+ * Skill consistency result - measures percentage similarity between baseline and variant
+ */
+export interface SkillConsistencyResult {
+  /** Overall consistency percentage (100% = identical) */
+  consistency_percentage: number;
+  /** Per-skill absolute differences (0-100 scale) */
+  skill_differences: {
+    problem_solving: number;
+    communication: number;
+    technical_skills: number;
+    creativity: number;
+    leadership: number;
+    self_management: number;
+  };
+  /** Average difference across all skills */
+  average_difference: number;
+  /** Per-skill confidence values for baseline */
+  baseline_scores: {
+    problem_solving: number;
+    communication: number;
+    technical_skills: number;
+    creativity: number;
+    leadership: number;
+    self_management: number;
+  };
+  /** Per-skill confidence values for variant */
+  variant_scores: {
+    problem_solving: number;
+    communication: number;
+    technical_skills: number;
+    creativity: number;
+    leadership: number;
+    self_management: number;
+  };
+}
+
+/**
  * Comparison result for a single variant against original
  */
 export interface VariantComparisonResult {
   profile_id: string;
   variant: PerturbationType;
+  /** NEW: Skill consistency measurement */
+  skill_consistency: SkillConsistencyResult;
   skill_attribution_consistency: "consistent" | "inconsistent";
   skill_attribution_details: {
     skillsChanged: string[];
@@ -143,6 +182,14 @@ export interface PerturbationSummary {
   hallucination_count: number;
   stable_recommendations_count: number;
   appropriate_action_plans_count: number;
+  /** Average skill consistency across all variants */
+  average_skill_consistency: number;
+  /** Skill consistency breakdown by variant type */
+  skill_consistency_by_variant: {
+    rephrased: number;
+    removed_detail: number;
+    added_irrelevant: number;
+  };
 }
 
 /**
@@ -153,6 +200,15 @@ export interface PerturbationMetrics {
   hallucinationRate: number;
   recommendationStabilityRate: number;
   actionPlanAppropriatenessRate: number;
+  /** Average skill consistency percentage (100% = identical outputs) */
+  averageSkillConsistency: number;
+  /** Skill consistency by variant type for summary table */
+  skillConsistencyByVariant: {
+    original: number;
+    rephrased: number;
+    removal: number;
+    injection: number;
+  };
 }
 
 /**
@@ -166,6 +222,17 @@ export interface PerturbationTestResult {
   metrics: PerturbationMetrics;
   timestamp: string;
   execution_time_total_ms: number;
+  /** Summary table for documentation/PDF export */
+  skill_consistency_table: SkillConsistencySummaryRow[];
+}
+
+/**
+ * Row format for skill consistency summary table (for documentation)
+ */
+export interface SkillConsistencySummaryRow {
+  input_variant: string;
+  skill_consistency: number;
+  description: string;
 }
 
 /**

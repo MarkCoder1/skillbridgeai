@@ -72,13 +72,6 @@ const features = [
   },
 ];
 
-// Stats data
-const stats = [
-  { value: "10K+", label: "Students Helped" },
-  { value: "500+", label: "Opportunities" },
-  { value: "95%", label: "Satisfaction Rate" },
-  { value: "50+", label: "Skills Tracked" },
-];
 
 export default function HomePage() {
   return (
@@ -170,21 +163,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Stats Section */}
-      <section className="py-12 bg-[var(--foreground)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {stats.map((stat, index) => (
-              <div key={index} className="text-center">
-                <p className="text-3xl md:text-4xl font-bold text-white mb-1">
-                  {stat.value}
-                </p>
-                <p className="text-gray-400 text-sm">{stat.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      
 
       {/* Features Section */}
       <section className="py-20 md:py-28 bg-white">
@@ -369,7 +348,7 @@ export default function HomePage() {
           <Link href="/analyze">
             <Button
               size="lg"
-              className="bg-white text-[var(--primary)] hover:bg-gray-100 hover:shadow-xl"
+              className="bg-white text-black hover:bg-gray-100 hover:shadow-xl"
             >
               Start Your Free Analysis
               <svg

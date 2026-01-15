@@ -134,45 +134,6 @@ export default function HowItWorksPage() {
         </div>
       </section>
 
-      {/* FAQ Section */}
-      <section className="py-20 bg-white">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-[var(--foreground)] mb-4">
-              Frequently Asked Questions
-            </h2>
-          </div>
-          <div className="space-y-4">
-            {faqs.map((faq, index) => (
-              <Card key={index} padding="md">
-                <details className="group">
-                  <summary className="flex items-center justify-between cursor-pointer list-none">
-                    <h3 className="font-semibold text-[var(--foreground)] pr-4">
-                      {faq.question}
-                    </h3>
-                    <svg
-                      className="w-5 h-5 text-[var(--muted)] transform group-open:rotate-180 transition-transform"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
-                  </summary>
-                  <p className="mt-4 text-[var(--muted)] pt-4 border-t border-[var(--card-border)]">
-                    {faq.answer}
-                  </p>
-                </details>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* CTA Section */}
       <section className="py-20 bg-gradient-to-r from-[var(--primary)] to-[var(--accent)]">
@@ -187,7 +148,7 @@ export default function HowItWorksPage() {
           <Link href="/analyze">
             <Button
               size="lg"
-              className="bg-white text-[var(--primary)] hover:bg-gray-100 hover:shadow-xl"
+              className="bg-white text-black hover:bg-gray-100 hover:shadow-xl"
             >
               Start Your Free Analysis
               <svg

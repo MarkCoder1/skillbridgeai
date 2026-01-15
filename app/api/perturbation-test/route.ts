@@ -415,8 +415,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Calculate metrics
-    const { summary, metrics } = calculateMetrics(allResults);
+    // Calculate metrics (now includes skill_consistency_table)
+    const { summary, metrics, skill_consistency_table } = calculateMetrics(allResults);
 
     // Build final result
     const finalResult: PerturbationTestResult = {
@@ -427,6 +427,7 @@ export async function POST(request: NextRequest) {
       metrics,
       timestamp: new Date().toISOString(),
       execution_time_total_ms: Date.now() - startTime,
+      skill_consistency_table,
     };
 
     return NextResponse.json(finalResult);
@@ -449,8 +450,8 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     name: "Perturbation & Robustness Testing API",
-    version: "1.0.0",
-    description: "Runs controlled input perturbations and compares outputs for robustness validation",
+    version: "1.1.0",
+    description: "Runs controlled input perturbations and compares outputs for robustness validation with skill consistency metrics",
     endpoints: {
       POST: {
         description: "Run perturbation tests on provided profiles",
@@ -458,11 +459,15 @@ export async function GET() {
           profiles: "Array of { id, name, profile } objects",
           config: {
             selectedProfileIds: "Array of profile IDs to test",
-            runInjection: "boolean - Run evidence injection tests",
-            runRemoval: "boolean - Run evidence removal tests", 
-            runRephrasing: "boolean - Run neutral rephrasing tests",
+            runInjection: "boolean - Run evidence injection tests (added irrelevant text)",
+            runRemoval: "boolean - Run evidence removal tests (removed detail)", 
+            runRephrasing: "boolean - Run neutral rephrasing tests (same meaning, different wording)",
             skipActionPlan: "boolean - Skip action plan generation for faster testing",
           },
+        },
+        response: {
+          skill_consistency_table: "Summary table for documentation (Input Variant | Skill Consistency)",
+          results: "Detailed per-variant results with skill_consistency breakdown",
         },
       },
     },
@@ -471,6 +476,18 @@ export async function GET() {
       hallucinationRate: "% of runs with untraced outputs",
       recommendationStabilityRate: "% of runs with stable recommendations",
       actionPlanAppropriatenessRate: "% of runs with proportional action plan changes",
+      averageSkillConsistency: "Average % similarity between baseline and variant skill scores",
+      skillConsistencyByVariant: "Breakdown: { original: 100%, rephrased: X%, removal: Y%, injection: Z% }",
+    },
+    skill_consistency_definition: {
+      description: "Percentage similarity between baseline and variant skill scores across 6 core skills",
+      skills: ["problem_solving", "communication", "technical_skills", "creativity", "leadership", "self_management"],
+      calculation: {
+        step1: "Absolute difference per skill (0-100 scale)",
+        step2: "Average difference across all 6 skills",
+        step3: "Convert to percentage similarity: 100% - average_difference",
+      },
+      example: "100% = identical outputs, 96% = 4% average deviation",
     },
   });
 }

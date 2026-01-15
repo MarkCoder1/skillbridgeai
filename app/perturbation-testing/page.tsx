@@ -179,19 +179,20 @@ export default function PerturbationTestingPage() {
               <span className={`text-xs px-2 py-0.5 rounded ${badge.color} text-white`}>
                 {badge.label}
               </span>
+              {/* Skill Consistency Badge */}
+              <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                result.skill_consistency.consistency_percentage >= 95 
+                  ? "bg-green-900/50 text-green-400" 
+                  : result.skill_consistency.consistency_percentage >= 85 
+                    ? "bg-yellow-900/50 text-yellow-400"
+                    : "bg-red-900/50 text-red-400"
+              }`}>
+                {result.skill_consistency.consistency_percentage}% consistent
+              </span>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <StatusBadge
-              label="Attribution"
-              status={result.skill_attribution_consistency === "consistent"}
-            />
-            <StatusBadge
-              label="Hallucination"
-              status={!result.hallucinations_detected}
-              invertColors
-            />
             <StatusBadge
               label="Stability"
               status={result.recommendation_stability === "stable"}
@@ -206,41 +207,56 @@ export default function PerturbationTestingPage() {
         {/* Expanded Details */}
         {isExpanded && (
           <div className="px-4 pb-4 bg-gray-800/30 space-y-4">
-            {/* Skill Attribution Details */}
-            <DetailSection title="Skill Attribution Consistency">
-              <p className="text-sm text-gray-300">
-                {result.skill_attribution_details.reasoning}
-              </p>
-              {result.skill_attribution_details.skillsChanged.length > 0 && (
-                <div className="mt-2">
-                  <span className="text-xs text-gray-400">Skills Changed: </span>
-                  <span className="text-sm text-yellow-400">
-                    {result.skill_attribution_details.skillsChanged.join(", ")}
-                  </span>
-                </div>
-              )}
-              {result.skill_attribution_details.unexpectedChanges.length > 0 && (
-                <div className="mt-1">
-                  <span className="text-xs text-gray-400">Unexpected: </span>
-                  <span className="text-sm text-red-400">
-                    {result.skill_attribution_details.unexpectedChanges.join(", ")}
-                  </span>
-                </div>
-              )}
-            </DetailSection>
-
-            {/* Hallucination Details */}
-            <DetailSection title="Hallucination Detection">
-              <p className="text-sm text-gray-300">
-                {result.hallucination_details.reasoning}
-              </p>
-              {result.hallucination_details.untracedSkills.length > 0 && (
-                <div className="mt-2">
-                  <span className="text-xs text-gray-400">Untraced Skills: </span>
-                  <span className="text-sm text-red-400">
-                    {result.hallucination_details.untracedSkills.slice(0, 3).join("; ")}
-                    {result.hallucination_details.untracedSkills.length > 3 && "..."}
-                  </span>
+            {/* Skill Consistency Details - NEW */}
+            <DetailSection title="Skill Consistency Breakdown">
+              <div className="flex items-center gap-2 mb-3">
+                <span className={`text-2xl font-bold ${
+                  result.skill_consistency.consistency_percentage >= 95 
+                    ? "text-green-400" 
+                    : result.skill_consistency.consistency_percentage >= 85 
+                      ? "text-yellow-400"
+                      : "text-red-400"
+                }`}>
+                  {result.skill_consistency.consistency_percentage}%
+                </span>
+                <span className="text-sm text-gray-400">
+                  overall consistency (avg diff: {result.skill_consistency.average_difference}%)
+                </span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                {Object.entries(result.skill_consistency.skill_differences).map(([skill, diff]) => (
+                  <div key={skill} className="flex justify-between items-center p-2 bg-gray-900/50 rounded">
+                    <span className="text-gray-400 capitalize">{skill.replace(/_/g, " ")}</span>
+                    <span className={`font-medium ${diff <= 5 ? "text-green-400" : diff <= 15 ? "text-yellow-400" : "text-red-400"}`}>
+                      {diff === 0 ? "=" : `±${diff}%`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {result.variant !== "original" && (
+                <div className="mt-3 grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <p className="text-gray-400 mb-1">Baseline Scores</p>
+                    <div className="space-y-1">
+                      {Object.entries(result.skill_consistency.baseline_scores).map(([skill, score]) => (
+                        <div key={skill} className="flex justify-between">
+                          <span className="text-gray-500 capitalize">{skill.replace(/_/g, " ")}</span>
+                          <span className="text-gray-300">{score}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 mb-1">Variant Scores</p>
+                    <div className="space-y-1">
+                      {Object.entries(result.skill_consistency.variant_scores).map(([skill, score]) => (
+                        <div key={skill} className="flex justify-between">
+                          <span className="text-gray-500 capitalize">{skill.replace(/_/g, " ")}</span>
+                          <span className="text-gray-300">{score}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
             </DetailSection>
@@ -477,19 +493,12 @@ export default function PerturbationTestingPage() {
                 <Card className="bg-gray-800 border-gray-700 p-6">
                   <h2 className="text-xl font-semibold mb-4">Summary Metrics</h2>
                   
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                     <MetricCard
-                      title="Skill Attribution Consistency"
-                      value={`${testResult.metrics.skillAttributionConsistencyRate}%`}
-                      subtext={`${testResult.summary.consistent_attribution_count}/${testResult.total_runs} runs`}
-                      color="purple"
-                    />
-                    <MetricCard
-                      title="Hallucination Rate"
-                      value={`${testResult.metrics.hallucinationRate}%`}
-                      subtext={`${testResult.summary.hallucination_count} detected`}
-                      color={testResult.metrics.hallucinationRate > 10 ? "red" : "green"}
-                      invert
+                      title="Skill Consistency"
+                      value={`${testResult.metrics.averageSkillConsistency}%`}
+                      subtext="Average across variants"
+                      color="green"
                     />
                     <MetricCard
                       title="Recommendation Stability"
@@ -509,6 +518,83 @@ export default function PerturbationTestingPage() {
                     <span>Profiles Tested: <strong className="text-white">{testResult.profiles_tested}</strong></span>
                     <span>Total Runs: <strong className="text-white">{testResult.total_runs}</strong></span>
                     <span>Execution Time: <strong className="text-white">{(testResult.execution_time_total_ms / 1000).toFixed(1)}s</strong></span>
+                  </div>
+                </Card>
+
+                {/* Skill Consistency Table for Documentation */}
+                <Card className="bg-gray-800 border-gray-700 p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-semibold">Skill Consistency by Variant Type</h2>
+                    <span className="text-xs bg-green-900/50 text-green-400 px-2 py-1 rounded">
+                      Documentation Ready
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-400 mb-4">
+                    This table shows the percentage similarity between baseline and variant skill scores across the 6 core skills.
+                  </p>
+                  
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-gray-700">
+                          <th className="py-3 px-4 text-gray-300 font-medium">Input Variant</th>
+                          <th className="py-3 px-4 text-gray-300 font-medium text-right">Skill Consistency</th>
+                          <th className="py-3 px-4 text-gray-300 font-medium">Description</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {testResult.skill_consistency_table.map((row, index) => (
+                          <tr key={index} className="border-b border-gray-700/50 hover:bg-gray-700/30">
+                            <td className="py-3 px-4">
+                              <span className={`font-medium ${
+                                row.input_variant === "Original" ? "text-gray-300" :
+                                row.input_variant === "Rephrased Input" ? "text-blue-400" :
+                                row.input_variant === "Removed Detail" ? "text-red-400" :
+                                "text-green-400"
+                              }`}>
+                                {row.input_variant}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <span className={`text-lg font-bold ${
+                                row.skill_consistency >= 95 ? "text-green-400" :
+                                row.skill_consistency >= 85 ? "text-yellow-400" :
+                                "text-red-400"
+                              }`}>
+                                {row.skill_consistency}%
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-gray-400 text-sm">
+                              {row.description}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Skill Breakdown by Variant Type */}
+                  <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="p-4 bg-gray-700/30 rounded-lg border border-gray-600">
+                      <p className="text-xs text-gray-400 mb-1">Original</p>
+                      <p className="text-2xl font-bold text-gray-300">{testResult.metrics.skillConsistencyByVariant.original}%</p>
+                      <p className="text-xs text-gray-500">Baseline reference</p>
+                    </div>
+                    <div className="p-4 bg-blue-900/20 rounded-lg border border-blue-500/30">
+                      <p className="text-xs text-gray-400 mb-1">Rephrased</p>
+                      <p className="text-2xl font-bold text-blue-400">{testResult.metrics.skillConsistencyByVariant.rephrased}%</p>
+                      <p className="text-xs text-gray-500">Same meaning, different words</p>
+                    </div>
+                    <div className="p-4 bg-red-900/20 rounded-lg border border-red-500/30">
+                      <p className="text-xs text-gray-400 mb-1">Removed Detail</p>
+                      <p className="text-2xl font-bold text-red-400">{testResult.metrics.skillConsistencyByVariant.removal}%</p>
+                      <p className="text-xs text-gray-500">Non-critical info removed</p>
+                    </div>
+                    <div className="p-4 bg-green-900/20 rounded-lg border border-green-500/30">
+                      <p className="text-xs text-gray-400 mb-1">Added Irrelevant</p>
+                      <p className="text-2xl font-bold text-green-400">{testResult.metrics.skillConsistencyByVariant.injection}%</p>
+                      <p className="text-xs text-gray-500">Noise injection test</p>
+                    </div>
                   </div>
                 </Card>
 
